@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AutopilotBenchmarkResult",
+  "description": "FeatureBench-aligned benchmark results for autopilot",
+  "type": "object",
+  "required": ["metadata", "tasks", "summary"],
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "required": ["timestamp", "autopilot_version", "model"],
+      "properties": {
+        "timestamp": { "type": "string", "format": "date-time" },
+        "autopilot_version": { "type": "string" },
+        "model": { "type": "string" },
+        "executor": { "type": "string", "description": "claude-code version" }
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "level", "resolved", "metrics"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "level": { "enum": ["L1", "L2", "L3"] },
+          "resolved": { "type": "boolean", "description": "All verifications passed" },
+          "metrics": {
+            "type": "object",
+            "required": ["passed_rate", "token_input", "token_output", "steps", "time_seconds"],
+            "properties": {
+              "passed_rate": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Fraction of verification checks passed"
+              },
+              "token_input": { "type": "integer" },
+              "token_output": { "type": "integer" },
+              "steps": {
+                "type": "integer",
+                "description": "Tool calls to completion"
+              },
+              "time_seconds": { "type": "number" },
+              "human_interventions": {
+                "type": "integer",
+                "default": 0,
+                "description": "Number of manual prompts required"
+              },
+              "error_recoveries": {
+                "type": "integer",
+                "default": 0,
+                "description": "Errors recovered via retry"
+              },
+              "errors_fatal": {
+                "type": "integer",
+                "default": 0,
+                "description": "Unrecoverable errors"
+              }
+            }
+          },
+          "verifications": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["type", "name", "passed"],
+              "properties": {
+                "type": { "enum": ["TEST", "API", "CLI", "DB", "UI"] },
+                "name": { "type": "string" },
+                "passed": { "type": "boolean" },
+                "error": { "type": "string" }
+              }
+            }
+          },
+          "phases": {
+            "type": "object",
+            "description": "Time spent in each phase",
+            "properties": {
+              "spike": { "type": "number" },
+              "specify": { "type": "number" },
+              "plan": { "type": "number" },
+              "tasks": { "type": "number" },
+              "analyze": { "type": "number" },
+              "implement": { "type": "number" },
+              "verify": { "type": "number" },
+              "review": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["resolved_rate", "passed_rate", "avg_time", "avg_tokens", "avg_steps"],
+      "properties": {
+        "resolved_rate": {
+          "type": "number",
+          "description": "% of tasks fully resolved"
+        },
+        "passed_rate": {
+          "type": "number",
+          "description": "Avg % of verifications passed per task"
+        },
+        "human_intervention_rate": {
+          "type": "number",
+          "description": "% of tasks requiring human input (target: 0%)"
+        },
+        "error_recovery_rate": {
+          "type": "number",
+          "description": "% of errors recovered via retry"
+        },
+        "avg_time": { "type": "number" },
+        "avg_tokens": { "type": "integer" },
+        "avg_steps": { "type": "integer" },
+        "by_level": {
+          "type": "object",
+          "properties": {
+            "L1": { "$ref": "#/$defs/levelSummary" },
+            "L2": { "$ref": "#/$defs/levelSummary" },
+            "L3": { "$ref": "#/$defs/levelSummary" }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "levelSummary": {
+      "type": "object",
+      "properties": {
+        "count": { "type": "integer" },
+        "resolved_rate": { "type": "number" },
+        "passed_rate": { "type": "number" },
+        "avg_time": { "type": "number" }
+      }
+    }
+  }
+}
