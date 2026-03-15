@@ -1,5 +1,5 @@
 ---
-description: End-to-end feature implementation orchestrator. Takes a plan file and drives through specify → plan → tasks → analyze → implement → review with automated iteration loops and team spawning.
+description: End-to-end feature implementation orchestrator. Takes a plan file and drives through spike (assumption validation) → specify → plan → tasks → analyze → implement → review with automated iteration loops, human checkpoints for significant deviations, and team spawning.
 ---
 
 ## User Input
@@ -49,11 +49,14 @@ specs/NNN-feature/.workflow-state.json
   "phase": "analyze",
   "status": "in_progress",
   "iterations": {
+    "spike": 0,
     "analyze": 0,
     "clarify": 0,
     "review": 0,
     "workflow": 0
   },
+  "spikeResults": [],
+  "checkpointDecisions": [],
   "taskRetries": {},
   "limits": {
     "analyze": 5,
@@ -95,10 +98,174 @@ Update state file **after each phase completion** and **before each phase start*
    - Validate state integrity
    - Report current position and resume
 
-### Phase 2: Specify
+### Phase 2: Spike (Assumption Validation)
+
+**Purpose**: Validate risky assumptions from the user's plan BEFORE committing to implementation. Run experiments, score findings, checkpoint if significant deviations.
+
+1. Update state: `phase: "spike"`
+
+2. **Extract Assumptions**: Parse plan file for risky assumptions:
+   - External API dependencies (endpoints, auth, rate limits)
+   - Package/library capabilities ("library X supports feature Y")
+   - Integration points ("service A can connect to service B")
+   - Performance assumptions ("this approach handles N requests/sec")
+   - Data format assumptions ("API returns JSON with field X")
+
+3. **Generate Spike Tasks**: For each assumption, create a spike experiment:
+   ```
+   spikes/
+   ├── spike-001-api-validation.md
+   ├── spike-002-package-eval.md
+   └── spike-003-integration-test.md
+   ```
+
+4. **Run Spikes in Parallel** (team spawn):
+   ```
+   SPAWN TEAM: Multiple agents, each validating one assumption
+   All agents run with: run_in_background: true, isolation: "worktree"
+
+   FOR each spike:
+       Agent(
+           description: "Spike: {assumption_summary}",
+           prompt: |
+               You are validating a technical assumption.
+
+               ## Assumption
+               {assumption_description}
+
+               ## Experiment
+               1. Write minimal throwaway code to test this assumption
+               2. Execute and observe results
+               3. Document: CONFIRMED | REFUTED | PARTIAL
+
+               ## Output Format
+               ```json
+               {
+                   "assumption": "{description}",
+                   "status": "CONFIRMED|REFUTED|PARTIAL",
+                   "confidence": 0-100,
+                   "evidence": "{what you observed}",
+                   "impact": "LOW|MEDIUM|HIGH",
+                   "deviation_type": "none|param_change|tech_swap|arch_change|blocker",
+                   "proposed_change": "{if refuted, what to do instead}",
+                   "code_location": "{path to spike code}"
+               }
+               ```
+
+               ## Constraints
+               - Throwaway code only (branch/worktree)
+               - Max 15 minutes per spike
+               - No production changes
+       )
+   ```
+
+5. **Aggregate Spike Results**: Collect all spike findings into `spike-report.md`
+
+6. **Classify Deviations**:
+
+   | Deviation Type | Confidence | Impact | Action |
+   |----------------|------------|--------|--------|
+   | `none` | ≥85% | Any | Auto-continue |
+   | `param_change` | ≥85% | LOW | Auto-update plan, continue |
+   | `tech_swap` | Any | MEDIUM | **CHECKPOINT** |
+   | `arch_change` | Any | HIGH | **CHECKPOINT** |
+   | `blocker` | Any | BLOCKER | **HALT** |
+
+7. **Auto-Continue Path** (confidence ≥85% AND impact=LOW):
+   ```
+   Log: "Spike validated: {assumption} ✓"
+   Update original-plan.md → validated-plan.md with minor adjustments
+   Continue to Phase 3: Specify
+   ```
+
+8. **Checkpoint Path** (confidence <85% OR impact≥MEDIUM):
+   ```
+   Save state: phase: "spike_checkpoint"
+
+   Display to user:
+   ┌─────────────────────────────────────────────────────────────┐
+   │  SPIKE CHECKPOINT                                          │
+   │                                                             │
+   │  Assumption: "Redis supports feature X"                    │
+   │  Finding: Redis does NOT support X                         │
+   │  Confidence: 95%                                           │
+   │  Impact: MEDIUM (tech swap required)                       │
+   │                                                             │
+   │  Proposed Change:                                          │
+   │    Switch to Memcached (supports X natively)               │
+   │    +1 new dependency, ~2 additional tasks                  │
+   │                                                             │
+   │  Evidence:                                                 │
+   │    > spike code at: spikes/spike-002/test.ts               │
+   │    > Redis SCAN command lacks filter capability            │
+   │                                                             │
+   │  Options:                                                  │
+   │    [1] Approve proposed change                             │
+   │    [2] Provide alternative approach                        │
+   │    [3] Abort workflow                                      │
+   └─────────────────────────────────────────────────────────────┘
+
+   WAIT for user input (this is the ONLY blocking prompt in the workflow)
+
+   IF user selects [1] (Approve):
+       Apply proposed change to validated-plan.md
+       Log: "User approved: {change_description}"
+       Continue to Phase 3: Specify
+
+   IF user selects [2] (Alternative):
+       Read user's alternative approach
+       Update validated-plan.md with user's approach
+       Re-run affected spike if needed
+       Continue to Phase 3: Specify
+
+   IF user selects [3] (Abort):
+       Update state: status: "aborted", reason: "User aborted at spike checkpoint"
+       Log: "Workflow aborted. State preserved for resume."
+       EXIT
+   ```
+
+9. **HALT Path** (blocker found):
+   ```
+   Display:
+   ┌─────────────────────────────────────────────────────────────┐
+   │  SPIKE BLOCKER - CANNOT PROCEED                            │
+   │                                                             │
+   │  Assumption: "External API provides endpoint /v2/data"     │
+   │  Finding: API endpoint does not exist                      │
+   │  Confidence: 100%                                          │
+   │  Impact: BLOCKER                                           │
+   │                                                             │
+   │  This blocks the core goal of the feature.                 │
+   │  Manual intervention required.                             │
+   │                                                             │
+   │  Suggestions:                                               │
+   │    - Contact API provider                                  │
+   │    - Find alternative data source                          │
+   │    - Revise feature scope                                  │
+   └─────────────────────────────────────────────────────────────┘
+
+   Update state: status: "blocked", blocker: {description}
+   EXIT
+   ```
+
+10. **Spike Artifacts**:
+    ```
+    specs/NNN-feature/
+    ├── original-plan.md      # User's input (never modified)
+    ├── spike-report.md       # All spike findings
+    ├── validated-plan.md     # Plan with validated/adjusted assumptions
+    └── spikes/               # Spike experiment code (throwaway)
+        ├── spike-001/
+        ├── spike-002/
+        └── ...
+    ```
+
+11. Update state: mark spike complete, proceed with `validated-plan.md`
+
+### Phase 3: Specify
 
 1. Update state: `phase: "specify"`
-2. Execute `/autopilot.specify` with plan file content as arguments
+2. Execute `/autopilot:specify` with **validated-plan.md** content (not original)
 3. Validate outputs exist: `spec.md`, `checklists/requirements.md`
 4. Update state: mark specify complete
 
