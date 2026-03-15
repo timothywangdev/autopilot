@@ -535,8 +535,10 @@ Wait for the skill to complete. Do NOT proceed to Step 3.3 until Skill tool retu
 This is NOT optional. You MUST run this Bash tool call and capture its exit code:
 
 ```bash
-FEATURE_DIR="${FEATURE_NAME:-$(basename $(pwd))}"
-SPEC_FILE="specs/${FEATURE_DIR}/spec.md"
+# Load FEATURE_DIR from state (set in Phase 1)
+STATE_FILE=$(find specs -name ".workflow-state.json" 2>/dev/null | head -1)
+FEATURE_DIR=$(dirname "$STATE_FILE")
+SPEC_FILE="$FEATURE_DIR/spec.md"
 
 echo "=== VALIDATION: spec.md ==="
 
@@ -625,8 +627,10 @@ Wait for the skill to complete.
 **Step 4.3: MANDATORY VALIDATION**
 
 ```bash
-FEATURE_DIR="${FEATURE_NAME:-$(basename $(pwd))}"
-PLAN_FILE="specs/${FEATURE_DIR}/plan.md"
+# Load FEATURE_DIR from state (set in Phase 1)
+STATE_FILE=$(find specs -name ".workflow-state.json" 2>/dev/null | head -1)
+FEATURE_DIR=$(dirname "$STATE_FILE")
+PLAN_FILE="$FEATURE_DIR/plan.md"
 
 echo "=== VALIDATION: plan.md ==="
 
@@ -702,8 +706,10 @@ Wait for the skill to complete.
 **Step 5.3: MANDATORY VALIDATION**
 
 ```bash
-FEATURE_DIR="${FEATURE_NAME:-$(basename $(pwd))}"
-TASKS_FILE="specs/${FEATURE_DIR}/tasks.md"
+# Load FEATURE_DIR from state (set in Phase 1)
+STATE_FILE=$(find specs -name ".workflow-state.json" 2>/dev/null | head -1)
+FEATURE_DIR=$(dirname "$STATE_FILE")
+TASKS_FILE="$FEATURE_DIR/tasks.md"
 
 echo "=== VALIDATION: tasks.md ==="
 
@@ -753,6 +759,12 @@ IF bash exit code is non-zero AND retries >= 3:
 </execution>
 
 ### Phase 6: Analyze
+
+<phase_rules>
+- CRITICAL/HIGH issues must be resolved before proceeding
+- Maximum 3 analyze iterations
+- Auto-fix issues when possible
+</phase_rules>
 
 <execution>
 
@@ -929,7 +941,14 @@ FOR each completed agent:
 
 ### Phase 8: Verify (Prove Tasks Work)
 
-**Purpose**: Prove each task ACTUALLY works through real execution. Code written ≠ task complete.
+<phase_rules>
+- Code written does NOT equal task complete
+- Each task MUST be verified through actual execution
+- All existing tests MUST pass (regression check)
+- Maximum 3 retry attempts per verification failure
+</phase_rules>
+
+**Purpose**: Prove each task ACTUALLY works through real execution.
 
 1. Update state: `phase: "verify"`
 
@@ -1212,7 +1231,7 @@ FOR each completed agent:
            EXIT
    ```
 
-8. **State Updates**:
+9. **State Updates**:
    ```json
    {
        "iterations": {
@@ -1227,6 +1246,12 @@ FOR each completed agent:
    ```
 
 ### Phase 9: Review (Team Spawn)
+
+<phase_rules>
+- Spawn ALL 5 reviewers in SINGLE message (parallel, not sequential)
+- CRITICAL issues must be fixed before completion
+- Maximum 5 review iterations
+</phase_rules>
 
 1. Update state: `phase: "review"`
 2. Log: "Verification complete. Starting code review..."
@@ -1331,7 +1356,7 @@ IF any CRITICAL issues:
         Log: "Critical issues found. Auto-fixing and re-reviewing..."
         FOR each critical issue:
             Spawn fix agent (automated)
-        GOTO Phase 5 (full re-analyze after fixes)
+        GOTO Phase 6 (re-analyze after fixes)
     ELSE:
         HALT: "Review loop limit reached with critical issues"
         EXIT
