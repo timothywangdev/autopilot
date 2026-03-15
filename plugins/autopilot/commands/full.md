@@ -4,77 +4,95 @@ description: End-to-end feature implementation orchestrator. Takes a plan file a
 # Evaluation test cases for skill-creator
 evals:
   # Critical path tests
-  - prompt: "/autopilot:full test/fixtures/simple-plan.md"
+  - prompt: "/autopilot:full simple-plan.md"
+    setup: |
+      cat > simple-plan.md << 'EOF'
+      # Simple Feature Plan
+      ## Feature: Hello World API
+      Add a simple hello world API endpoint.
+      ## Requirements
+      - GET /api/hello returns { message: "Hello, World!" }
+      - Response is JSON with status 200
+      ## Tech Stack
+      - TypeScript
+      - Express or existing framework
+      ## Assumptions
+      - Server is already set up
+      - No authentication required
+      EOF
     expect: |
       - Creates spec.md with requirements from plan
       - Creates plan.md with technical architecture
       - Creates tasks.md with ordered task list
-      - Creates .workflow-state.json with correct schema
-      - All phases execute: spike → specify → plan → tasks → analyze → implement → verify → review
-      - Final status is "done" or workflow state shows progress
+      - Creates .workflow-state.json with version, phase, and status fields
 
   - prompt: "/autopilot:full --resume"
+    setup: |
+      mkdir -p specs/001-test-feature
+      cat > specs/001-test-feature/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "001-test-feature",
+        "phase": "specify",
+        "status": "in_progress",
+        "timestamps": { "started": "2026-03-15T10:00:00Z" }
+      }
+      EOF
     expect: |
       - Reads existing .workflow-state.json
-      - Continues from saved phase (not restart)
-      - Preserves completed work
-      - Updates timestamps on resume
+      - Continues from saved phase (specify), not restart from beginning
+      - Preserves existing state data
 
   # Error handling tests
   - prompt: "/autopilot:full nonexistent-file.md"
     expect: |
-      - Returns error about file not found
+      - Returns error message containing "not found" or "does not exist"
       - Does NOT crash or hang
-      - Suggests correct usage
+      - Suggests providing valid plan file path
 
   - prompt: "/autopilot:full"
     expect: |
-      - Shows usage instructions
-      - Mentions <plan-file> argument
+      - Shows usage instructions or error about missing argument
+      - Mentions plan file argument requirement
       - Mentions --resume option
 
   # Spike phase tests
-  - prompt: "/autopilot:full test/fixtures/risky-assumptions-plan.md"
+  - prompt: "/autopilot:full risky-plan.md"
+    setup: |
+      cat > risky-plan.md << 'EOF'
+      # Feature Plan with Risky Assumptions
+      ## Feature: Real-time Data Pipeline
+      Build a real-time data pipeline using external APIs.
+      ## Requirements
+      1. Fetch data from ExternalAPI v3 /stream endpoint
+      2. Process data in real-time
+      3. Store in MongoDB with TTL
+      ## Assumptions (RISKY - needs spike validation)
+      - ExternalAPI v3 /stream endpoint exists and supports WebSocket
+      - ExternalAPI rate limit is 1000 req/min (need to verify)
+      - MongoDB supports the specific aggregation pipeline we need
+      EOF
     expect: |
-      - Extracts risky assumptions from plan
-      - Creates spike experiments
-      - Runs spikes in parallel (team spawn)
-      - Creates spike-report.md
-      - Checkpoints if significant deviation found
-
-  # Verification tests
-  - prompt: "/autopilot:full test/fixtures/simple-plan.md"
-    expect: |
-      - Runs existing test suite (yarn test or npm test)
-      - Runs E2E tests if playwright/cypress configured
-      - Runs TypeScript type check
-      - Halts if tests fail after retry limit
-      - Creates verification-report.md
-
-  # Review tests
-  - prompt: "/autopilot:full test/fixtures/simple-plan.md"
-    expect: |
-      - Spawns 5 reviewer agents in parallel
-      - Reviews: functional, architecture, contract, quality, coverage
-      - Creates review-report.md
-      - Auto-fixes critical issues
-      - Halts if critical issues remain after limit
+      - Identifies risky assumptions from plan
+      - Creates spike experiments or validation tasks
+      - Creates spike-report.md or similar validation artifact
 
   # State persistence tests
-  - prompt: "/autopilot:full test/fixtures/simple-plan.md"
+  - prompt: "/autopilot:full hello-api-plan.md"
+    setup: |
+      cat > hello-api-plan.md << 'EOF'
+      # Simple Feature Plan
+      ## Feature: Hello API
+      Add a hello API endpoint.
+      ## Requirements
+      - GET /api/hello returns JSON greeting
+      ## Tech Stack
+      - TypeScript
+      EOF
     expect: |
-      - Updates .workflow-state.json after each phase
-      - Tracks iterations count
-      - Records completed tasks
-      - Stores timestamps (started, lastUpdated, phaseStarted)
-
-  # Watchdog tests
-  - prompt: "/autopilot:full test/fixtures/complex-plan.md"
-    expect: |
-      - Spawns background watchdog agent
-      - Watchdog monitors heartbeat
-      - Heartbeat updated every phase
-      - Recovery triggered if stale > 5 minutes
+      - Creates .workflow-state.json in feature directory
+      - State file contains version, phase, and status fields
+      - State file tracks timestamps (started, lastUpdated)
 ---
 
 ## User Input

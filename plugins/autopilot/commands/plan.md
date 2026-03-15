@@ -12,35 +12,78 @@ handoffs:
 evals:
   - prompt: "/autopilot:plan"
     setup: |
-      cat > spec.md << 'EOF'
+      mkdir -p .specify/templates .specify/memory .specify/scripts/bash specs/001-comments
+      cat > specs/001-comments/spec.md << 'EOF'
       # Feature: User Comments
       ## Requirements
       - Users can post comments on articles
       - Comments have author, content, timestamp
       - Comments can be nested (replies)
       EOF
+      cat > .specify/templates/plan-template.md << 'EOF'
+      # Implementation Plan
+      ## Technical Context
+      ## Architecture
+      ## Phases
+      EOF
+      cat > .specify/memory/constitution.md << 'EOF'
+      # Project Constitution
+      EOF
+      cat > .specify/scripts/bash/setup-plan.sh << 'EOF'
+      #!/bin/bash
+      echo '{"FEATURE_SPEC": "specs/001-comments/spec.md", "IMPL_PLAN": "specs/001-comments/plan.md", "SPECS_DIR": "specs/001-comments", "BRANCH": "001-comments"}'
+      EOF
+      chmod +x .specify/scripts/bash/setup-plan.sh
+      git init 2>/dev/null || true
+      git checkout -b 001-comments 2>/dev/null || true
     expect: |
-      - Creates plan.md with architecture details
-      - Includes implementation phases
-      - References spec.md requirements
+      - Creates plan.md in specs/001-comments directory
+      - Plan contains architecture or implementation details
+      - Plan references comment functionality from spec
 
   - prompt: "/autopilot:plan"
     setup: |
-      cat > spec.md << 'EOF'
+      mkdir -p .specify/templates .specify/memory .specify/scripts/bash specs/001-payments
+      cat > specs/001-payments/spec.md << 'EOF'
       # Feature: Payment Integration
       ## Requirements
       - Stripe integration for payments
       - Store payment history
       - Handle refunds
       EOF
+      cat > .specify/templates/plan-template.md << 'EOF'
+      # Implementation Plan
+      ## Technical Context
+      ## Architecture
+      ## Data Model
+      ## Phases
+      EOF
+      cat > .specify/memory/constitution.md << 'EOF'
+      # Project Constitution
+      EOF
+      cat > .specify/scripts/bash/setup-plan.sh << 'EOF'
+      #!/bin/bash
+      echo '{"FEATURE_SPEC": "specs/001-payments/spec.md", "IMPL_PLAN": "specs/001-payments/plan.md", "SPECS_DIR": "specs/001-payments", "BRANCH": "001-payments"}'
+      EOF
+      chmod +x .specify/scripts/bash/setup-plan.sh
+      git init 2>/dev/null || true
+      git checkout -b 001-payments 2>/dev/null || true
     expect: |
-      - Creates plan.md
-      - Creates data-model.md (payment schema needed)
-      - Considers security for payment data
+      - Creates plan.md with payment architecture
+      - Creates data-model.md with payment/transaction schema
+      - Plan addresses payment security considerations
 
   - prompt: "/autopilot:plan"
+    setup: |
+      mkdir -p .specify/scripts/bash
+      cat > .specify/scripts/bash/setup-plan.sh << 'EOF'
+      #!/bin/bash
+      echo '{"error": "spec.md not found"}'
+      exit 1
+      EOF
+      chmod +x .specify/scripts/bash/setup-plan.sh
     expect: |
-      - Shows error: spec.md not found
+      - Shows error about spec.md not found
       - Suggests running /autopilot:specify first
 ---
 

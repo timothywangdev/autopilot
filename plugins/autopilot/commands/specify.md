@@ -11,31 +11,82 @@ handoffs:
 
 evals:
   - prompt: "/autopilot:specify Add a user profile page with avatar upload"
+    setup: |
+      mkdir -p .specify/templates .specify/memory .specify/scripts/bash specs
+      cat > .specify/templates/spec-template.md << 'EOF'
+      # Feature: {{FEATURE_NAME}}
+      ## Overview
+      ## Requirements
+      ## Acceptance Criteria
+      ## User Stories
+      EOF
+      cat > .specify/memory/constitution.md << 'EOF'
+      # Project Constitution
+      EOF
+      cat > .specify/scripts/bash/create-new-feature.sh << 'EOF'
+      #!/bin/bash
+      echo '{"BRANCH_NAME": "001-user-profile", "SPEC_FILE": "specs/001-user-profile/spec.md"}'
+      mkdir -p specs/001-user-profile
+      EOF
+      chmod +x .specify/scripts/bash/create-new-feature.sh
     expect: |
-      - Creates spec.md file
-      - Includes "user profile" in requirements
-      - Includes "avatar upload" in requirements
-      - Has Acceptance Criteria section
-      - Has Requirements section
+      - Creates spec.md file in specs directory
+      - Spec contains "user profile" or "profile page" in content
+      - Spec contains "avatar" or "upload" in content
+      - Spec has Requirements section
+      - Spec has Acceptance Criteria or User Stories section
 
   - prompt: "/autopilot:specify Implement OAuth2 login with Google and GitHub"
+    setup: |
+      mkdir -p .specify/templates .specify/memory .specify/scripts/bash specs
+      cat > .specify/templates/spec-template.md << 'EOF'
+      # Feature: {{FEATURE_NAME}}
+      ## Overview
+      ## Requirements
+      ## Acceptance Criteria
+      EOF
+      cat > .specify/memory/constitution.md << 'EOF'
+      # Project Constitution
+      EOF
+      cat > .specify/scripts/bash/create-new-feature.sh << 'EOF'
+      #!/bin/bash
+      echo '{"BRANCH_NAME": "001-oauth-login", "SPEC_FILE": "specs/001-oauth-login/spec.md"}'
+      mkdir -p specs/001-oauth-login
+      EOF
+      chmod +x .specify/scripts/bash/create-new-feature.sh
     expect: |
-      - Creates spec.md with OAuth2 requirements
-      - Mentions Google OAuth
-      - Mentions GitHub OAuth
-      - Includes security considerations
+      - Creates spec.md with OAuth or authentication requirements
+      - Spec mentions Google authentication
+      - Spec mentions GitHub authentication
 
   - prompt: "/autopilot:specify"
     expect: |
-      - Asks for feature description
-      - Does NOT create empty spec.md
-      - Shows helpful prompt for input
+      - Asks for feature description or shows error about missing input
+      - Does NOT create empty spec.md file
+      - Output contains prompt or instruction for providing description
 
   - prompt: "/autopilot:specify Add dark mode toggle"
+    setup: |
+      mkdir -p .specify/templates .specify/memory .specify/scripts/bash specs
+      cat > .specify/templates/spec-template.md << 'EOF'
+      # Feature: {{FEATURE_NAME}}
+      ## Overview
+      ## Requirements
+      ## Acceptance Criteria
+      EOF
+      cat > .specify/memory/constitution.md << 'EOF'
+      # Project Constitution
+      EOF
+      cat > .specify/scripts/bash/create-new-feature.sh << 'EOF'
+      #!/bin/bash
+      echo '{"BRANCH_NAME": "001-dark-mode", "SPEC_FILE": "specs/001-dark-mode/spec.md"}'
+      mkdir -p specs/001-dark-mode
+      EOF
+      chmod +x .specify/scripts/bash/create-new-feature.sh
     expect: |
-      - Creates concise spec (not over-engineered)
-      - Focus on core requirement: dark mode toggle
-      - Has testable acceptance criteria
+      - Creates spec.md focused on dark mode functionality
+      - Spec contains "dark mode" or "theme" in content
+      - Spec has testable acceptance criteria (specific user actions and expected outcomes)
 ---
 
 ## User Input

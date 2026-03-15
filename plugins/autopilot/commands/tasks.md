@@ -13,7 +13,14 @@ handoffs:
 evals:
   - prompt: "/autopilot:tasks"
     setup: |
-      cat > plan.md << 'EOF'
+      mkdir -p .specify/templates .specify/scripts/bash specs/001-users
+      cat > specs/001-users/spec.md << 'EOF'
+      # Feature: User Management
+      ## User Stories
+      - P1: User can register
+      - P2: User can login
+      EOF
+      cat > specs/001-users/plan.md << 'EOF'
       # Implementation Plan
       ## Phase 1: Database Setup
       - Create user schema
@@ -22,40 +29,91 @@ evals:
       - Create CRUD endpoints
       - Add validation
       EOF
+      cat > .specify/templates/tasks-template.md << 'EOF'
+      # Tasks: {{FEATURE_NAME}}
+      ## Phase 1: Setup
+      ## Phase 2: Implementation
+      EOF
+      cat > .specify/scripts/bash/check-prerequisites.sh << 'EOF'
+      #!/bin/bash
+      echo '{"FEATURE_DIR": "specs/001-users", "AVAILABLE_DOCS": ["spec.md", "plan.md"]}'
+      EOF
+      chmod +x .specify/scripts/bash/check-prerequisites.sh
+      git init 2>/dev/null || true
+      git checkout -b 001-users 2>/dev/null || true
     expect: |
-      - Creates tasks.md with checkbox format [ ]
-      - Tasks are ordered by dependency
-      - Each task has unique ID (T001, T002, etc.)
-      - Tasks reference plan.md phases
+      - Creates tasks.md with checkbox format (- [ ])
+      - Tasks have unique IDs (T001, T002, etc.)
+      - Tasks are organized by phase matching plan.md
 
   - prompt: "/autopilot:tasks"
     setup: |
-      cat > plan.md << 'EOF'
+      mkdir -p .specify/templates .specify/scripts/bash specs/001-models
+      cat > specs/001-models/spec.md << 'EOF'
+      # Feature: Data Models
+      ## User Stories
+      - P1: Create data models
+      EOF
+      cat > specs/001-models/plan.md << 'EOF'
       # Plan
       ## Phase 1: Independent Tasks
-      - Create user model
-      - Create post model
-      - Create comment model
+      - Create user model in src/models/user.py
+      - Create post model in src/models/post.py
+      - Create comment model in src/models/comment.py
       EOF
+      cat > .specify/templates/tasks-template.md << 'EOF'
+      # Tasks
+      EOF
+      cat > .specify/scripts/bash/check-prerequisites.sh << 'EOF'
+      #!/bin/bash
+      echo '{"FEATURE_DIR": "specs/001-models", "AVAILABLE_DOCS": ["spec.md", "plan.md"]}'
+      EOF
+      chmod +x .specify/scripts/bash/check-prerequisites.sh
+      git init 2>/dev/null || true
+      git checkout -b 001-models 2>/dev/null || true
     expect: |
-      - Marks independent tasks with [P] for parallel
-      - Tasks with no dependencies can run simultaneously
+      - Marks independent tasks with [P] marker
+      - Multiple tasks can be marked [P] when they modify different files
 
   - prompt: "/autopilot:tasks"
     setup: |
-      cat > plan.md << 'EOF'
-      # Plan
-      - Add login button
-      - Create login endpoint
+      mkdir -p .specify/templates .specify/scripts/bash specs/001-login
+      cat > specs/001-login/spec.md << 'EOF'
+      # Feature: Login
+      ## User Stories
+      - P1: User can login
       EOF
+      cat > specs/001-login/plan.md << 'EOF'
+      # Plan
+      - Add login button to UI
+      - Create login API endpoint
+      EOF
+      cat > .specify/templates/tasks-template.md << 'EOF'
+      # Tasks
+      EOF
+      cat > .specify/scripts/bash/check-prerequisites.sh << 'EOF'
+      #!/bin/bash
+      echo '{"FEATURE_DIR": "specs/001-login", "AVAILABLE_DOCS": ["spec.md", "plan.md"]}'
+      EOF
+      chmod +x .specify/scripts/bash/check-prerequisites.sh
+      git init 2>/dev/null || true
+      git checkout -b 001-login 2>/dev/null || true
     expect: |
-      - Each task has Verify: line
-      - Verification includes type (UI, API, CLI, DB, TEST)
-      - Verification includes expected outcome
+      - Tasks include Verify: line with verification method
+      - Verification specifies type (UI, API, CLI, DB, or TEST)
+      - Verification describes expected outcome
 
   - prompt: "/autopilot:tasks"
+    setup: |
+      mkdir -p .specify/scripts/bash
+      cat > .specify/scripts/bash/check-prerequisites.sh << 'EOF'
+      #!/bin/bash
+      echo '{"error": "plan.md not found"}'
+      exit 1
+      EOF
+      chmod +x .specify/scripts/bash/check-prerequisites.sh
     expect: |
-      - Shows error: plan.md not found
+      - Shows error about plan.md not found
       - Suggests running /autopilot:plan first
 ---
 

@@ -3,26 +3,34 @@ description: Initialize autopilot in current project. Creates .specify/ director
 
 evals:
   - prompt: "/autopilot:init"
+    setup: |
+      rm -rf .specify specs
     expect: |
       - Creates .specify/ directory
-      - Creates .specify/memory/constitution.md
-      - Creates .specify/templates/ with all template files
+      - Creates .specify/memory/ directory with constitution.md file
+      - Creates .specify/templates/ directory with template files
       - Creates specs/ directory
-      - Shows success message with next steps
+      - Output contains "success" or "initialized" or "created"
 
   - prompt: "/autopilot:init"
-    setup: "mkdir -p .specify/templates && echo 'existing' > .specify/templates/spec-template.md"
+    setup: |
+      mkdir -p .specify/templates
+      echo 'existing template content' > .specify/templates/spec-template.md
     expect: |
       - Detects existing .specify/ directory
-      - Asks user about overwrite vs skip
-      - Does NOT overwrite without confirmation
+      - Asks about overwrite or reports existing files
+      - Does NOT overwrite .specify/templates/spec-template.md without confirmation
 
   - prompt: "/autopilot:init"
-    setup: "mkdir -p .specify && touch .specify/memory/constitution.md"
+    setup: |
+      mkdir -p .specify/memory
+      echo '# Existing Constitution' > .specify/memory/constitution.md
+      rm -rf .specify/templates
     expect: |
-      - Handles partial initialization gracefully
-      - Creates missing files only
-      - Reports what was created vs skipped
+      - Handles partial initialization
+      - Creates missing .specify/templates/ directory
+      - Preserves existing .specify/memory/constitution.md
+      - Reports what was created vs what was skipped
 ---
 
 ## Initialization

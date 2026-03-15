@@ -556,6 +556,2085 @@ evals:
       exit_gracefully: true
     severity: low
 
+  # ============================================================================
+  # EDGE CASE TESTS - Unicode/Special Characters
+  # ============================================================================
+
+  - name: "handles unicode in plan filename"
+    skill: "autopilot:full"
+    setup: |
+      cat > "计划-日本語-🚀.md" << 'EOF'
+      # Feature: Unicode Filename Test
+      ## Requirements
+      - Simple requirement
+      EOF
+    prompt: "/autopilot:full \"计划-日本語-🚀.md\""
+    expect:
+      exit_gracefully: true
+      output_not_contains:
+        - "encoding error"
+        - "invalid character"
+    severity: medium
+
+  - name: "handles RTL languages in plan content"
+    skill: "autopilot:full"
+    setup: |
+      cat > rtl-plan.md << 'EOF'
+      # Feature: RTL Support
+      ## Requirements
+      - Support Arabic: العربية
+      - Support Hebrew: עברית
+      - Mixed direction: English and العربية together
+      EOF
+    prompt: "/autopilot:full rtl-plan.md"
+    expect:
+      exit_gracefully: true
+    severity: low
+
+  - name: "handles special markdown characters in requirements"
+    skill: "autopilot:full"
+    setup: |
+      cat > special-chars-plan.md << 'EOF'
+      # Feature: Special Characters
+      ## Requirements
+      - Support `backticks` in requirements
+      - Support *asterisks* and **bold**
+      - Support [brackets] and (parentheses)
+      - Support pipes | and backslashes \
+      - Support quotes "double" and 'single'
+      - Support angle brackets <tag> and </tag>
+      - Support regex patterns: ^[a-z]+$
+      EOF
+    prompt: "/autopilot:full special-chars-plan.md"
+    expect:
+      exit_gracefully: true
+      files_exist:
+        - "specs/*/spec.md"
+    severity: medium
+
+  - name: "handles null bytes and control characters"
+    skill: "autopilot:full"
+    setup: |
+      # Create plan with control characters (excluding null which breaks bash)
+      printf "# Feature: Control Chars\n## Requirements\n- Tab:\there\n- Bell:\a\n" > control-plan.md
+    prompt: "/autopilot:full control-plan.md"
+    expect:
+      exit_gracefully: true
+      output_not_contains:
+        - "crash"
+        - "fatal"
+    severity: low
+
+  # ============================================================================
+  # EDGE CASE TESTS - Very Long Plan Files
+  # ============================================================================
+
+  - name: "handles 100+ requirements plan"
+    skill: "autopilot:full"
+    setup: |
+      echo "# Feature: Large Scale System" > large-plan.md
+      echo "## Requirements" >> large-plan.md
+      for i in $(seq 1 150); do
+        echo "- REQ-$i: Implement feature component $i with validation and error handling" >> large-plan.md
+      done
+    prompt: "/autopilot:full large-plan.md"
+    timeout: 900
+    expect:
+      exit_gracefully: true
+      output_not_contains:
+        - "context limit"
+        - "token limit exceeded"
+    severity: high
+
+  - name: "handles deeply nested requirement hierarchy"
+    skill: "autopilot:full"
+    setup: |
+      cat > nested-plan.md << 'EOF'
+      # Feature: Deep Nesting
+      ## Requirements
+      - Level 1 Requirement
+        - Level 2 Sub-requirement A
+          - Level 3 Detail A1
+            - Level 4 Specifics A1a
+              - Level 5 Implementation note
+            - Level 4 Specifics A1b
+          - Level 3 Detail A2
+        - Level 2 Sub-requirement B
+          - Level 3 Detail B1
+      - Another Level 1 Requirement
+        - Sub-requirement with nested lists
+          - Item 1
+          - Item 2
+          - Item 3
+      EOF
+    prompt: "/autopilot:full nested-plan.md"
+    expect:
+      exit_gracefully: true
+      files_exist:
+        - "specs/*/tasks.md"
+    severity: medium
+
+  - name: "handles plan with very long single requirement"
+    skill: "autopilot:full"
+    setup: |
+      echo "# Feature: Long Requirement" > long-req-plan.md
+      echo "## Requirements" >> long-req-plan.md
+      echo -n "- Implement a comprehensive system that " >> long-req-plan.md
+      for i in $(seq 1 50); do
+        echo -n "handles scenario $i with proper error handling and " >> long-req-plan.md
+      done
+      echo "final validation." >> long-req-plan.md
+    prompt: "/autopilot:full long-req-plan.md"
+    expect:
+      exit_gracefully: true
+    severity: low
+
+  - name: "handles plan with 500+ line documentation"
+    skill: "autopilot:full"
+    setup: |
+      echo "# Feature: Extensively Documented" > doc-heavy-plan.md
+      echo "## Overview" >> doc-heavy-plan.md
+      for i in $(seq 1 100); do
+        echo "This is line $i of extensive background documentation explaining the context." >> doc-heavy-plan.md
+      done
+      echo "## Requirements" >> doc-heavy-plan.md
+      for i in $(seq 1 20); do
+        echo "- Requirement $i" >> doc-heavy-plan.md
+      done
+      echo "## Technical Details" >> doc-heavy-plan.md
+      for i in $(seq 1 200); do
+        echo "Technical detail line $i explaining implementation considerations." >> doc-heavy-plan.md
+      done
+    prompt: "/autopilot:full doc-heavy-plan.md"
+    timeout: 600
+    expect:
+      exit_gracefully: true
+    severity: medium
+
+  # ============================================================================
+  # EDGE CASE TESTS - Conflicting Requirements
+  # ============================================================================
+
+  - name: "detects directly conflicting requirements"
+    skill: "autopilot:full"
+    setup: |
+      cat > conflict-plan.md << 'EOF'
+      # Feature: Conflicting Requirements
+      ## Requirements
+      - All API responses must be synchronous
+      - All API responses must be asynchronous
+      - Maximum response time is 100ms
+      - Minimum processing time is 500ms
+      EOF
+    prompt: "/autopilot:full conflict-plan.md"
+    expect:
+      output_contains:
+        - "conflict"
+      exit_gracefully: true
+    severity: high
+
+  - name: "detects implicit conflicts in requirements"
+    skill: "autopilot:full"
+    setup: |
+      cat > implicit-conflict-plan.md << 'EOF'
+      # Feature: Implicit Conflicts
+      ## Requirements
+      - System must be completely offline-capable
+      - System must validate all data with real-time cloud verification
+      - User sessions never expire
+      - Sessions expire after 5 minutes of inactivity
+      EOF
+    prompt: "/autopilot:full implicit-conflict-plan.md"
+    expect:
+      output_contains:
+        - "clarif"
+      exit_gracefully: true
+    severity: medium
+
+  - name: "handles mutually exclusive feature flags"
+    skill: "autopilot:full"
+    setup: |
+      cat > mutex-plan.md << 'EOF'
+      # Feature: Exclusive Modes
+      ## Requirements
+      - Enable both debug mode and production mode simultaneously
+      - Run in single-threaded mode and multi-threaded mode at the same time
+      - Support both encrypted and unencrypted storage for the same data
+      EOF
+    prompt: "/autopilot:full mutex-plan.md"
+    expect:
+      output_contains:
+        - "conflict"
+        - "exclusive"
+      exit_gracefully: true
+    severity: medium
+
+  # ============================================================================
+  # EDGE CASE TESTS - Ambiguous Language
+  # ============================================================================
+
+  - name: "detects ambiguous quantifiers"
+    skill: "autopilot:full"
+    setup: |
+      cat > ambiguous-plan.md << 'EOF'
+      # Feature: Vague Requirements
+      ## Requirements
+      - System should be fast
+      - Handle many concurrent users
+      - Provide adequate security
+      - Support various file formats
+      - Ensure good performance
+      EOF
+    prompt: "/autopilot:full ambiguous-plan.md"
+    expect:
+      output_contains:
+        - "clarif"
+        - "ambiguous"
+    severity: medium
+
+  - name: "handles requirements with undefined references"
+    skill: "autopilot:full"
+    setup: |
+      cat > undefined-refs-plan.md << 'EOF'
+      # Feature: Undefined References
+      ## Requirements
+      - Integrate with the standard API
+      - Follow the existing pattern
+      - Use the recommended approach
+      - Connect to the backend service
+      - Implement as discussed in the meeting
+      EOF
+    prompt: "/autopilot:full undefined-refs-plan.md"
+    expect:
+      output_contains:
+        - "undefined"
+        - "clarif"
+      exit_gracefully: true
+    severity: medium
+
+  - name: "handles subjective requirements"
+    skill: "autopilot:full"
+    setup: |
+      cat > subjective-plan.md << 'EOF'
+      # Feature: Subjective Requirements
+      ## Requirements
+      - UI should look modern and beautiful
+      - Code should be clean and elegant
+      - User experience should feel intuitive
+      - System should behave naturally
+      EOF
+    prompt: "/autopilot:full subjective-plan.md"
+    expect:
+      output_contains:
+        - "subjective"
+        - "clarif"
+      exit_gracefully: true
+    severity: low
+
+  # ============================================================================
+  # EDGE CASE TESTS - Nested Directory Structures
+  # ============================================================================
+
+  - name: "handles deeply nested spec directory"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/category/subcategory/feature/v2
+      cat > test-plan.md << 'EOF'
+      # Feature: Nested Test
+      ## Requirements
+      - Simple requirement
+      EOF
+    prompt: "/autopilot:full test-plan.md --output specs/category/subcategory/feature/v2"
+    expect:
+      files_exist:
+        - "specs/category/subcategory/feature/v2/spec.md"
+      exit_gracefully: true
+    severity: medium
+
+  - name: "handles symlinks in directory structure"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p real-specs
+      ln -s real-specs specs-link
+      cat > test-plan.md << 'EOF'
+      # Feature: Symlink Test
+      ## Requirements
+      - Simple requirement
+      EOF
+    prompt: "/autopilot:full test-plan.md --output specs-link/feature"
+    expect:
+      exit_gracefully: true
+    severity: low
+
+  - name: "handles relative path traversal attempts"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/feature
+      cat > test-plan.md << 'EOF'
+      # Feature: Path Traversal Test
+      ## Requirements
+      - Simple requirement
+      EOF
+    prompt: "/autopilot:full test-plan.md --output ../../../tmp/malicious"
+    expect:
+      output_contains:
+        - "invalid"
+        - "path"
+      exit_gracefully: true
+    severity: high
+
+  - name: "handles output to read-only directory"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p readonly-dir
+      chmod 444 readonly-dir
+      cat > test-plan.md << 'EOF'
+      # Feature: Readonly Test
+      ## Requirements
+      - Simple requirement
+      EOF
+    prompt: "/autopilot:full test-plan.md --output readonly-dir/feature"
+    teardown: |
+      chmod 755 readonly-dir
+    expect:
+      output_contains:
+        - "permission"
+        - "error"
+      exit_gracefully: true
+    severity: medium
+
+  # ============================================================================
+  # EDGE CASE TESTS - Git Conflicts
+  # ============================================================================
+
+  - name: "handles git conflict markers in existing files"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/feature
+      cat > specs/feature/spec.md << 'EOF'
+      # Feature: Conflict Test
+      <<<<<<< HEAD
+      - Requirement from local
+      =======
+      - Requirement from remote
+      >>>>>>> origin/main
+      EOF
+      cat > test-plan.md << 'EOF'
+      # Feature: Conflict Test
+      ## Requirements
+      - New requirement
+      EOF
+    prompt: "/autopilot:full test-plan.md --resume"
+    cwd: "specs/feature"
+    expect:
+      output_contains:
+        - "conflict"
+        - "resolve"
+      exit_gracefully: true
+    severity: high
+
+  - name: "handles uncommitted changes warning"
+    skill: "autopilot:full"
+    setup: |
+      echo "modified content" >> package.json
+      cat > test-plan.md << 'EOF'
+      # Feature: Uncommitted Test
+      ## Requirements
+      - Simple requirement
+      EOF
+    prompt: "/autopilot:full test-plan.md"
+    expect:
+      output_contains:
+        - "uncommitted"
+        - "warning"
+      exit_gracefully: true
+    severity: low
+
+  - name: "handles detached HEAD state"
+    skill: "autopilot:full"
+    setup: |
+      git checkout --detach HEAD 2>/dev/null || true
+      cat > test-plan.md << 'EOF'
+      # Feature: Detached HEAD Test
+      ## Requirements
+      - Simple requirement
+      EOF
+    prompt: "/autopilot:full test-plan.md"
+    expect:
+      output_contains:
+        - "detached"
+        - "warning"
+      exit_gracefully: true
+    severity: low
+
+  - name: "handles merge in progress"
+    skill: "autopilot:full"
+    setup: |
+      # Simulate merge in progress
+      mkdir -p .git
+      touch .git/MERGE_HEAD
+      cat > test-plan.md << 'EOF'
+      # Feature: Merge Test
+      ## Requirements
+      - Simple requirement
+      EOF
+    prompt: "/autopilot:full test-plan.md"
+    expect:
+      output_contains:
+        - "merge"
+        - "in progress"
+      exit_gracefully: true
+    severity: medium
+
+  # ============================================================================
+  # EDGE CASE TESTS - Network Timeouts During Spike
+  # ============================================================================
+
+  - name: "handles network timeout during spike web search"
+    skill: "autopilot:full"
+    setup: |
+      cat > network-test-plan.md << 'EOF'
+      # Feature: Network Dependency
+      ## Requirements
+      - Integrate with external-api.example.com
+      ## Risky Assumptions
+      - external-api.example.com is available and compatible
+      EOF
+    prompt: "/autopilot:full network-test-plan.md"
+    mock:
+      web_search:
+        timeout: true
+        after: 5000
+    expect:
+      output_contains:
+        - "timeout"
+        - "retry"
+      exit_gracefully: true
+    severity: high
+
+  - name: "handles DNS resolution failure during spike"
+    skill: "autopilot:full"
+    setup: |
+      cat > dns-test-plan.md << 'EOF'
+      # Feature: DNS Test
+      ## Requirements
+      - Connect to nonexistent.invalid.domain
+      ## Risky Assumptions
+      - nonexistent.invalid.domain exists
+      EOF
+    prompt: "/autopilot:full dns-test-plan.md"
+    expect:
+      output_contains:
+        - "spike"
+        - "failed"
+      exit_gracefully: true
+    severity: medium
+
+  - name: "retries transient network failures"
+    skill: "autopilot:full"
+    setup: |
+      cat > retry-test-plan.md << 'EOF'
+      # Feature: Retry Test
+      ## Requirements
+      - Verify API compatibility
+      ## Risky Assumptions
+      - API endpoint is compatible
+      EOF
+    prompt: "/autopilot:full retry-test-plan.md"
+    mock:
+      web_fetch:
+        fail_count: 2
+        then: success
+    expect:
+      output_contains:
+        - "retry"
+      workflow_state:
+        phase: ["specify", "plan", "tasks"]
+    severity: medium
+
+  # ============================================================================
+  # EDGE CASE TESTS - Missing Dependencies
+  # ============================================================================
+
+  - name: "handles missing package.json"
+    skill: "autopilot:full"
+    setup: |
+      rm -f package.json
+      cat > test-plan.md << 'EOF'
+      # Feature: No Package
+      ## Requirements
+      - Add user authentication
+      EOF
+    prompt: "/autopilot:full test-plan.md"
+    expect:
+      output_contains:
+        - "package.json"
+        - "create"
+      exit_gracefully: true
+    severity: medium
+
+  - name: "handles missing tsconfig.json for TypeScript project"
+    skill: "autopilot:full"
+    setup: |
+      rm -f tsconfig.json
+      cat > package.json << 'EOF'
+      {"dependencies": {"typescript": "^5.0.0"}}
+      EOF
+      cat > test-plan.md << 'EOF'
+      # Feature: No TSConfig
+      ## Requirements
+      - Add TypeScript module
+      EOF
+    prompt: "/autopilot:full test-plan.md"
+    expect:
+      output_contains:
+        - "tsconfig"
+      exit_gracefully: true
+    severity: medium
+
+  - name: "handles corrupted node_modules"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p node_modules/.bin
+      echo "corrupted" > node_modules/.package-lock.json
+      cat > test-plan.md << 'EOF'
+      # Feature: Corrupted Modules
+      ## Requirements
+      - Simple requirement
+      EOF
+    prompt: "/autopilot:full test-plan.md"
+    expect:
+      exit_gracefully: true
+    severity: low
+
+  - name: "handles incompatible dependency versions"
+    skill: "autopilot:full"
+    setup: |
+      cat > package.json << 'EOF'
+      {
+        "dependencies": {
+          "package-a": "^1.0.0",
+          "package-b": "^2.0.0"
+        }
+      }
+      EOF
+      cat > test-plan.md << 'EOF'
+      # Feature: Dependency Conflict
+      ## Requirements
+      - Use package-a feature X
+      - Use package-b feature Y (incompatible with package-a)
+      EOF
+    prompt: "/autopilot:full test-plan.md"
+    expect:
+      output_contains:
+        - "dependency"
+      exit_gracefully: true
+    severity: medium
+
+  # ============================================================================
+  # EDGE CASE TESTS - Invalid JSON in Workflow State
+  # ============================================================================
+
+  - name: "handles truncated JSON in workflow state"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/test-feature
+      echo '{"version": 1, "feature": "test", "phase": "ta' > specs/test-feature/.workflow-state.json
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/test-feature"
+    expect:
+      output_contains:
+        - "corrupted"
+        - "invalid JSON"
+      exit_gracefully: true
+    severity: high
+
+  - name: "handles empty workflow state file"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/test-feature
+      touch specs/test-feature/.workflow-state.json
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/test-feature"
+    expect:
+      output_contains:
+        - "empty"
+        - "invalid"
+      exit_gracefully: true
+    severity: high
+
+  - name: "handles workflow state with wrong schema version"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/test-feature
+      cat > specs/test-feature/.workflow-state.json << 'EOF'
+      {
+        "version": 999,
+        "feature": "test-feature",
+        "phase": "tasks",
+        "status": "in_progress"
+      }
+      EOF
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/test-feature"
+    expect:
+      output_contains:
+        - "version"
+        - "unsupported"
+      exit_gracefully: true
+    severity: high
+
+  - name: "handles workflow state with missing required fields"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/test-feature
+      cat > specs/test-feature/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "test-feature"
+      }
+      EOF
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/test-feature"
+    expect:
+      output_contains:
+        - "invalid"
+        - "missing"
+      exit_gracefully: true
+    severity: high
+
+  - name: "handles workflow state with invalid phase value"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/test-feature
+      cat > specs/test-feature/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "test-feature",
+        "phase": "nonexistent_phase",
+        "status": "in_progress",
+        "iterations": {"spike": 0, "analyze": 0, "clarify": 0, "verify": 0, "review": 0},
+        "limits": {"analyze": 5, "clarify": 3, "implementTaskRetry": 3, "verify": 3, "review": 5},
+        "timestamps": {"started": "2026-03-15T10:00:00Z"}
+      }
+      EOF
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/test-feature"
+    expect:
+      output_contains:
+        - "invalid phase"
+      exit_gracefully: true
+    severity: high
+
+  - name: "handles workflow state with NaN/Infinity values"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/test-feature
+      # JSON doesn't support NaN/Infinity, but let's test malformed numbers
+      cat > specs/test-feature/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "test-feature",
+        "phase": "tasks",
+        "status": "in_progress",
+        "iterations": {"spike": 1e999, "analyze": -1, "clarify": 0, "verify": 0, "review": 0},
+        "limits": {"analyze": 5, "clarify": 3, "implementTaskRetry": 3, "verify": 3, "review": 5},
+        "timestamps": {"started": "2026-03-15T10:00:00Z"}
+      }
+      EOF
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/test-feature"
+    expect:
+      exit_gracefully: true
+    severity: low
+
+  # ============================================================================
+  # EDGE CASE TESTS - Concurrent Modifications to State File
+  # ============================================================================
+
+  - name: "handles concurrent state file modification"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/test-feature
+      cat > specs/test-feature/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "test-feature",
+        "phase": "tasks",
+        "status": "in_progress",
+        "iterations": {"spike": 1, "analyze": 0, "clarify": 0, "verify": 0, "review": 0},
+        "limits": {"analyze": 5, "clarify": 3, "implementTaskRetry": 3, "verify": 3, "review": 5},
+        "timestamps": {"started": "2026-03-15T10:00:00Z"}
+      }
+      EOF
+      # Start background process that modifies state
+      (sleep 2 && echo '{"version": 1, "feature": "modified", "phase": "done"}' > specs/test-feature/.workflow-state.json) &
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/test-feature"
+    expect:
+      output_contains:
+        - "conflict"
+        - "modified"
+      exit_gracefully: true
+    severity: high
+
+  - name: "handles state file locked by another process"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/test-feature
+      cat > specs/test-feature/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "test-feature",
+        "phase": "tasks",
+        "status": "in_progress",
+        "iterations": {"spike": 1, "analyze": 0, "clarify": 0, "verify": 0, "review": 0},
+        "limits": {"analyze": 5, "clarify": 3, "implementTaskRetry": 3, "verify": 3, "review": 5},
+        "timestamps": {"started": "2026-03-15T10:00:00Z"}
+      }
+      EOF
+      # Create lock file
+      touch specs/test-feature/.workflow-state.json.lock
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/test-feature"
+    expect:
+      output_contains:
+        - "locked"
+        - "another process"
+      exit_gracefully: true
+    severity: medium
+
+  - name: "handles rapid successive state updates"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/test-feature
+      cat > specs/test-feature/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "test-feature",
+        "phase": "implement",
+        "status": "in_progress",
+        "currentTask": "T001",
+        "iterations": {"spike": 1, "analyze": 1, "clarify": 0, "verify": 0, "review": 0},
+        "limits": {"analyze": 5, "clarify": 3, "implementTaskRetry": 3, "verify": 3, "review": 5},
+        "timestamps": {"started": "2026-03-15T10:00:00Z"}
+      }
+      EOF
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/test-feature"
+    mock:
+      state_write_delay: 0  # No delay between writes
+    expect:
+      exit_gracefully: true
+      json_file: "specs/test-feature/.workflow-state.json"
+      json_schema:
+        required:
+          - version
+          - timestamps
+    severity: medium
+
+  # ============================================================================
+  # EDGE CASE TESTS - Memory/Context Limits
+  # ============================================================================
+
+  - name: "handles plan that exceeds context window"
+    skill: "autopilot:full"
+    setup: |
+      echo "# Feature: Massive Plan" > huge-plan.md
+      echo "## Requirements" >> huge-plan.md
+      # Generate ~500KB of requirements
+      for i in $(seq 1 1000); do
+        echo "- REQ-$i: $(head -c 500 /dev/urandom | base64 | head -c 400)" >> huge-plan.md
+      done
+    prompt: "/autopilot:full huge-plan.md"
+    timeout: 120
+    expect:
+      output_contains:
+        - "context"
+        - "limit"
+        - "truncat"
+      exit_gracefully: true
+    severity: high
+
+  - name: "handles accumulated context from many iterations"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/test-feature
+      cat > specs/test-feature/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "test-feature",
+        "phase": "analyze",
+        "status": "in_progress",
+        "iterations": {"spike": 1, "analyze": 4, "clarify": 2, "verify": 0, "review": 0},
+        "limits": {"analyze": 5, "clarify": 3, "implementTaskRetry": 3, "verify": 3, "review": 5},
+        "timestamps": {"started": "2026-03-15T10:00:00Z"},
+        "history": []
+      }
+      EOF
+      # Add large history entries
+      for i in $(seq 1 50); do
+        echo "Iteration $i analysis result with detailed findings..." >> specs/test-feature/analysis-history.md
+      done
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/test-feature"
+    expect:
+      exit_gracefully: true
+    severity: medium
+
+  - name: "handles very long file paths"
+    skill: "autopilot:full"
+    setup: |
+      # Create deeply nested path near filesystem limits
+      DEEP_PATH="specs/a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/q/r/s/t/u/v/w/x/y/z"
+      mkdir -p "$DEEP_PATH"
+      cat > "$DEEP_PATH/very-long-feature-name-that-goes-on-and-on.md" << 'EOF'
+      # Feature: Deep Path Test
+      ## Requirements
+      - Simple requirement
+      EOF
+    prompt: "/autopilot:full specs/a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/q/r/s/t/u/v/w/x/y/z/very-long-feature-name-that-goes-on-and-on.md"
+    expect:
+      exit_gracefully: true
+    severity: low
+
+  # ============================================================================
+  # STRESS TESTS - Maximum Task Count
+  # ============================================================================
+
+  - name: "stress test: 30+ tasks execution"
+    skill: "autopilot:full"
+    setup: |
+      cat > many-tasks-plan.md << 'EOF'
+      # Feature: Multi-Task System
+      ## Requirements
+      EOF
+      for i in $(seq 1 35); do
+        echo "- Implement component $i with full CRUD operations" >> many-tasks-plan.md
+      done
+    prompt: "/autopilot:full many-tasks-plan.md"
+    timeout: 900
+    expect:
+      workflow_state:
+        completedTasks:
+          type: array
+          min_length: 30
+      exit_gracefully: true
+    severity: high
+
+  - name: "stress test: tasks with complex dependencies"
+    skill: "autopilot:full"
+    setup: |
+      cat > complex-deps-plan.md << 'EOF'
+      # Feature: Dependency Chain
+      ## Requirements
+      - Task A (no deps)
+      - Task B depends on A
+      - Task C depends on A
+      - Task D depends on B and C
+      - Task E depends on D
+      - Task F depends on A and E
+      - Task G depends on B, C, and F
+      - Task H depends on G
+      - Task I depends on D and H
+      - Task J depends on all above
+      ## Additional Requirements
+      EOF
+      for i in $(seq 11 30); do
+        echo "- Task $i depends on Task $((i-1))" >> complex-deps-plan.md
+      done
+    prompt: "/autopilot:full complex-deps-plan.md"
+    timeout: 900
+    expect:
+      exit_gracefully: true
+      output_not_contains:
+        - "circular dependency"
+        - "deadlock"
+    severity: high
+
+  - name: "stress test: maximum parallelizable tasks"
+    skill: "autopilot:full"
+    setup: |
+      cat > parallel-tasks-plan.md << 'EOF'
+      # Feature: Parallel Execution
+      ## Requirements
+      EOF
+      for i in $(seq 1 30); do
+        echo "- Independent task $i (no dependencies)" >> parallel-tasks-plan.md
+      done
+    prompt: "/autopilot:full parallel-tasks-plan.md"
+    timeout: 600
+    expect:
+      file_contains:
+        file: "specs/*/tasks.md"
+        content:
+          - "[P]"
+      exit_gracefully: true
+    severity: medium
+
+  # ============================================================================
+  # STRESS TESTS - Maximum Agent Spawns
+  # ============================================================================
+
+  - name: "stress test: 50 agent spawns"
+    skill: "autopilot:full"
+    setup: |
+      cat > many-agents-plan.md << 'EOF'
+      # Feature: Agent Stress Test
+      ## Requirements
+      EOF
+      # Each requirement triggers analyze + implement agents
+      for i in $(seq 1 25); do
+        echo "- Feature component $i requiring separate analysis" >> many-agents-plan.md
+      done
+    prompt: "/autopilot:full many-agents-plan.md"
+    timeout: 900
+    expect:
+      agents_spawned:
+        min: 25
+        max: 60
+      exit_gracefully: true
+    severity: high
+
+  - name: "stress test: rapid agent spawn/teardown"
+    skill: "autopilot:full"
+    setup: |
+      cat > rapid-spawn-plan.md << 'EOF'
+      # Feature: Rapid Agent Test
+      ## Requirements
+      - Quick task 1
+      - Quick task 2
+      - Quick task 3
+      - Quick task 4
+      - Quick task 5
+      - Quick task 6
+      - Quick task 7
+      - Quick task 8
+      - Quick task 9
+      - Quick task 10
+      EOF
+    prompt: "/autopilot:full rapid-spawn-plan.md"
+    timeout: 300
+    expect:
+      output_not_contains:
+        - "resource exhaustion"
+        - "too many"
+      exit_gracefully: true
+    severity: medium
+
+  - name: "stress test: agent failure recovery"
+    skill: "autopilot:full"
+    setup: |
+      cat > agent-failure-plan.md << 'EOF'
+      # Feature: Agent Recovery Test
+      ## Requirements
+      - Task that causes agent to fail then retry
+      - Task with intermittent failures
+      - Task that exceeds agent timeout
+      EOF
+    prompt: "/autopilot:full agent-failure-plan.md"
+    mock:
+      agent_failure_rate: 0.3
+    timeout: 600
+    expect:
+      output_contains:
+        - "retry"
+      exit_gracefully: true
+    severity: high
+
+  # ============================================================================
+  # STRESS TESTS - Long-Running Operations (Timeout Handling)
+  # ============================================================================
+
+  - name: "stress test: operation timeout handling"
+    skill: "autopilot:full"
+    setup: |
+      cat > timeout-plan.md << 'EOF'
+      # Feature: Timeout Test
+      ## Requirements
+      - Long-running database migration
+      - Complex computation task
+      - External API integration with slow response
+      EOF
+    prompt: "/autopilot:full timeout-plan.md"
+    mock:
+      operation_delay: 120000  # 2 minute delay
+    timeout: 180
+    expect:
+      output_contains:
+        - "timeout"
+      exit_gracefully: true
+    severity: high
+
+  - name: "stress test: verify phase timeout"
+    skill: "autopilot:full"
+    setup: |
+      cat > verify-timeout-plan.md << 'EOF'
+      # Feature: Verify Timeout
+      ## Requirements
+      - Feature with very slow tests
+      EOF
+      cat > package.json << 'EOF'
+      {"scripts": {"test": "sleep 120 && echo done"}}
+      EOF
+    prompt: "/autopilot:full verify-timeout-plan.md"
+    timeout: 60
+    expect:
+      output_contains:
+        - "timeout"
+        - "verify"
+      workflow_state:
+        status: ["failed", "timeout"]
+    severity: high
+
+  - name: "stress test: graceful shutdown on timeout"
+    skill: "autopilot:full"
+    setup: |
+      cat > graceful-shutdown-plan.md << 'EOF'
+      # Feature: Shutdown Test
+      ## Requirements
+      - Complex multi-phase feature
+      EOF
+    prompt: "/autopilot:full graceful-shutdown-plan.md"
+    timeout: 10
+    expect:
+      output_contains:
+        - "saving state"
+        - "cleanup"
+      json_file: "specs/*/.workflow-state.json"
+      json_values:
+        status: ["timeout", "interrupted"]
+    severity: high
+
+  - name: "stress test: state preservation on forced termination"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/test-feature
+      cat > specs/test-feature/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "test-feature",
+        "phase": "implement",
+        "status": "in_progress",
+        "currentTask": "T005",
+        "completedTasks": ["T001", "T002", "T003", "T004"],
+        "iterations": {"spike": 1, "analyze": 1, "clarify": 0, "verify": 0, "review": 0},
+        "limits": {"analyze": 5, "clarify": 3, "implementTaskRetry": 3, "verify": 3, "review": 5},
+        "timestamps": {"started": "2026-03-15T10:00:00Z"}
+      }
+      EOF
+      cat > specs/test-feature/tasks.md << 'EOF'
+      # Tasks
+      - [x] T001: First task
+      - [x] T002: Second task
+      - [x] T003: Third task
+      - [x] T004: Fourth task
+      - [ ] T005: Fifth task (in progress)
+      - [ ] T006: Sixth task
+      EOF
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/test-feature"
+    timeout: 5
+    expect:
+      json_file: "specs/test-feature/.workflow-state.json"
+      json_values:
+        completedTasks:
+          type: array
+          min_length: 4
+    severity: high
+
+  # ============================================================================
+  # ADDITIONAL EDGE CASES - Filesystem Edge Cases
+  # ============================================================================
+
+  - name: "handles disk full simulation"
+    skill: "autopilot:full"
+    setup: |
+      cat > disk-full-plan.md << 'EOF'
+      # Feature: Disk Full Test
+      ## Requirements
+      - Simple requirement
+      EOF
+    prompt: "/autopilot:full disk-full-plan.md"
+    mock:
+      disk_space: 0
+    expect:
+      output_contains:
+        - "disk"
+        - "space"
+        - "error"
+      exit_gracefully: true
+    severity: medium
+
+  - name: "handles file permission changes during execution"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/feature
+      cat > test-plan.md << 'EOF'
+      # Feature: Permission Test
+      ## Requirements
+      - Simple requirement
+      EOF
+      # Background process that changes permissions
+      (sleep 2 && chmod 000 specs/feature) &
+    prompt: "/autopilot:full test-plan.md"
+    teardown: |
+      chmod 755 specs/feature 2>/dev/null || true
+    expect:
+      output_contains:
+        - "permission"
+      exit_gracefully: true
+    severity: low
+
+  - name: "handles case-insensitive filesystem collisions"
+    skill: "autopilot:full"
+    setup: |
+      cat > "Feature.md" << 'EOF'
+      # Feature: Case Test
+      ## Requirements
+      - Requirement A
+      EOF
+      cat > "feature.md" << 'EOF'
+      # Feature: Case Test Lower
+      ## Requirements
+      - Requirement B
+      EOF
+    prompt: "/autopilot:full Feature.md"
+    expect:
+      exit_gracefully: true
+    severity: low
+
+# ============================================================================
+# INTEGRATION TESTS - End-to-end workflow scenarios
+# ============================================================================
+
+integration:
+  # ---------------------------------------------------------------------------
+  # Happy Path: Simple Feature from Plan to Completion
+  # ---------------------------------------------------------------------------
+
+  - name: "integration-happy-path-simple-feature"
+    description: "Full workflow: plan -> spike -> specify -> plan -> tasks -> implement -> verify -> review -> done"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full test/fixtures/integration-simple.md"
+    timeout: 300  # 5 minutes max
+    setup: |
+      mkdir -p {{working_dir}}
+      cd {{working_dir}}
+      git init
+      echo '{"name": "test-project", "version": "1.0.0", "scripts": {"test": "echo passed"}}' > package.json
+      echo '{"compilerOptions": {"strict": true, "noEmit": true}}' > tsconfig.json
+      mkdir -p src
+      echo 'export {}' > src/index.ts
+    expect:
+      # All phases execute
+      phases_completed:
+        - spike
+        - specify
+        - plan
+        - tasks
+        - implement
+        - verify
+        - review
+      # All artifacts created
+      files_exist:
+        - "specs/*/original-plan.md"
+        - "specs/*/spec.md"
+        - "specs/*/plan.md"
+        - "specs/*/tasks.md"
+        - "specs/*/verification-report.md"
+        - "specs/*/review-report.md"
+        - "specs/*/.workflow-state.json"
+      # Workflow completes successfully
+      workflow_state:
+        status: "done"
+        phase: "complete"
+      # No blocking prompts or checkpoints
+      output_not_contains:
+        - "CHECKPOINT"
+        - "BLOCKER"
+        - "HALT"
+      # Tasks were executed
+      json_file: "specs/*/.workflow-state.json"
+      json_values:
+        completedTasks:
+          type: array
+          min_length: 1
+        agents.spawned:
+          min: 1
+    severity: critical
+
+  - name: "integration-happy-path-no-spike-needed"
+    description: "Simple plan with no risky assumptions skips spike experiments"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full test/fixtures/integration-simple.md"
+    timeout: 300
+    setup: |
+      mkdir -p {{working_dir}}
+      cd {{working_dir}}
+      git init
+      echo '{"name": "test-project", "scripts": {"test": "echo ok"}}' > package.json
+    expect:
+      # Spike phase runs but finds no risky assumptions
+      output_contains:
+        - "No risky assumptions"
+      # Proceeds directly to specify
+      workflow_state:
+        iterations.spike: 0
+      output_not_contains:
+        - "spike-001"
+        - "spike-002"
+    severity: high
+
+  # ---------------------------------------------------------------------------
+  # Resume Flow: Interrupt and Resume at Each Phase
+  # ---------------------------------------------------------------------------
+
+  - name: "integration-resume-from-specify"
+    description: "Resume workflow from specify phase preserves prior work"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/task-list-component
+      cat > specs/task-list-component/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "task-list-component",
+        "planFile": "/tmp/original-plan.md",
+        "phase": "specify",
+        "status": "in_progress",
+        "iterations": {"spike": 1, "analyze": 0, "clarify": 0, "verify": 0, "review": 0, "workflow": 0},
+        "spikeResults": [{"assumption": "React configured", "status": "CONFIRMED", "confidence": 100}],
+        "limits": {"analyze": 5, "clarify": 3, "implementTaskRetry": 3, "verify": 3, "verifyRetry": 2, "review": 5, "workflow": 3},
+        "completedTasks": [],
+        "timestamps": {"started": "2026-03-15T10:00:00Z", "lastUpdated": "2026-03-15T10:05:00Z"}
+      }
+      EOF
+      cat > specs/task-list-component/original-plan.md << 'EOF'
+      # Simple Plan
+      ## Requirements
+      - Add task list component
+      EOF
+      cat > specs/task-list-component/validated-plan.md << 'EOF'
+      # Validated Plan
+      ## Requirements
+      - Add task list component (VALIDATED)
+      EOF
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/task-list-component"
+    expect:
+      output_contains:
+        - "Resuming"
+        - "specify"
+      # Does NOT re-run spike
+      output_not_contains:
+        - "Running spike"
+        - "spike experiment"
+      # Preserves spike results
+      json_file: ".workflow-state.json"
+      json_values:
+        spikeResults:
+          type: array
+          min_length: 1
+        iterations.spike: 1
+      # Continues forward
+      workflow_state:
+        phase: ["specify", "plan", "tasks"]
+    severity: critical
+
+  - name: "integration-resume-from-implement"
+    description: "Resume from implement phase continues with remaining tasks"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/task-list-component
+      cat > specs/task-list-component/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "task-list-component",
+        "planFile": "/tmp/plan.md",
+        "phase": "implement",
+        "status": "in_progress",
+        "iterations": {"spike": 1, "analyze": 1, "clarify": 0, "verify": 0, "review": 0, "workflow": 0},
+        "spikeResults": [],
+        "limits": {"analyze": 5, "clarify": 3, "implementTaskRetry": 3, "verify": 3, "verifyRetry": 2, "review": 5, "workflow": 3},
+        "completedTasks": ["T001", "T002"],
+        "taskRetries": {},
+        "timestamps": {"started": "2026-03-15T10:00:00Z", "lastUpdated": "2026-03-15T10:15:00Z"}
+      }
+      EOF
+      cat > specs/task-list-component/spec.md << 'EOF'
+      # Spec: Task List
+      ## Requirements
+      - Display tasks
+      - Toggle completion
+      - Add new task
+      EOF
+      cat > specs/task-list-component/plan.md << 'EOF'
+      # Plan
+      ## Architecture
+      - TaskList component
+      - TaskItem component
+      EOF
+      cat > specs/task-list-component/tasks.md << 'EOF'
+      # Tasks
+      ## Phase 1
+      - [X] T001: Create TaskItem component
+        - **Verify**: TEST | TaskItem.test.tsx passes
+      - [X] T002: Create TaskList component
+        - **Verify**: TEST | TaskList.test.tsx passes
+      - [ ] T003: Add toggle functionality
+        - **Verify**: UI | Click task -> checkmark toggles
+      - [ ] T004: Add new task input
+        - **Verify**: UI | Type text, click Add -> new task appears
+      EOF
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/task-list-component"
+    expect:
+      output_contains:
+        - "Resuming"
+        - "implement"
+        - "T003"  # Should continue with incomplete tasks
+        - "T004"
+      output_not_contains:
+        - "T001"  # Should NOT re-implement completed
+        - "T002"
+      # Preserves completed tasks
+      json_values:
+        completedTasks:
+          contains: ["T001", "T002"]
+    severity: critical
+
+  - name: "integration-resume-from-verify"
+    description: "Resume from verify phase re-runs failed verifications"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/task-list-component
+      cat > specs/task-list-component/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "task-list-component",
+        "planFile": "/tmp/plan.md",
+        "phase": "verify",
+        "status": "in_progress",
+        "iterations": {"spike": 1, "analyze": 1, "clarify": 0, "verify": 1, "review": 0, "workflow": 0},
+        "completedTasks": ["T001", "T002", "T003", "T004"],
+        "verificationResults": [
+          {"task_id": "T001", "status": "VERIFIED"},
+          {"task_id": "T002", "status": "VERIFIED"},
+          {"task_id": "T003", "status": "FAILED", "failure_reason": "Button not found"},
+          {"task_id": "T004", "status": "VERIFIED"}
+        ],
+        "taskRetries": {"T003": 1},
+        "limits": {"analyze": 5, "clarify": 3, "implementTaskRetry": 3, "verify": 3, "verifyRetry": 2, "review": 5, "workflow": 3},
+        "timestamps": {"started": "2026-03-15T10:00:00Z", "lastUpdated": "2026-03-15T10:20:00Z"}
+      }
+      EOF
+      cat > specs/task-list-component/tasks.md << 'EOF'
+      # Tasks
+      - [V] T001: Component A - **Verify**: TEST | passes
+      - [V] T002: Component B - **Verify**: TEST | passes
+      - [X] T003: Toggle feature - **Verify**: UI | button click
+      - [V] T004: Input feature - **Verify**: UI | add works
+      EOF
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/task-list-component"
+    expect:
+      output_contains:
+        - "Resuming"
+        - "verify"
+        - "T003"  # Should retry failed verification
+      # Attempts fix then re-verify
+      output_contains:
+        - "re-implement"
+        - "re-verify"
+    severity: high
+
+  - name: "integration-resume-from-review"
+    description: "Resume from review phase continues review iteration"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/task-list-component
+      cat > specs/task-list-component/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "task-list-component",
+        "planFile": "/tmp/plan.md",
+        "phase": "review",
+        "status": "in_progress",
+        "iterations": {"spike": 1, "analyze": 1, "clarify": 0, "verify": 1, "review": 1, "workflow": 0},
+        "completedTasks": ["T001", "T002", "T003"],
+        "verificationResults": [
+          {"task_id": "T001", "status": "VERIFIED"},
+          {"task_id": "T002", "status": "VERIFIED"},
+          {"task_id": "T003", "status": "VERIFIED"}
+        ],
+        "issues": [
+          {"severity": "HIGH", "type": "security", "description": "Missing input validation"}
+        ],
+        "limits": {"analyze": 5, "clarify": 3, "implementTaskRetry": 3, "verify": 3, "verifyRetry": 2, "review": 5, "workflow": 3},
+        "timestamps": {"started": "2026-03-15T10:00:00Z", "lastUpdated": "2026-03-15T10:25:00Z"}
+      }
+      EOF
+      cat > specs/task-list-component/spec.md << 'EOF'
+      # Spec
+      ## Requirements
+      - Task list feature
+      EOF
+      cat > specs/task-list-component/plan.md << 'EOF'
+      # Plan
+      - Simple architecture
+      EOF
+      cat > specs/task-list-component/tasks.md << 'EOF'
+      # Tasks
+      - [V] T001: Done
+      - [V] T002: Done
+      - [V] T003: Done
+      EOF
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/task-list-component"
+    expect:
+      output_contains:
+        - "Resuming"
+        - "review"
+      # Spawns review agents
+      agents_spawned:
+        min: 5
+    severity: high
+
+  # ---------------------------------------------------------------------------
+  # Spike Validation: Plan with Risky Assumptions
+  # ---------------------------------------------------------------------------
+
+  - name: "integration-spike-auto-continue"
+    description: "High-confidence assumptions auto-continue without checkpoint"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full test/fixtures/integration-spike.md"
+    timeout: 300
+    setup: |
+      mkdir -p {{working_dir}}
+      cd {{working_dir}}
+      git init
+      echo '{"name": "test", "scripts": {"test": "echo ok"}}' > package.json
+    expect:
+      # Spike runs for high-confidence assumptions
+      files_exist:
+        - "specs/*/spike-report.md"
+      # Auto-continues for confirmed assumptions
+      output_contains:
+        - "validated"
+        - "CONFIRMED"
+      workflow_state:
+        iterations.spike:
+          min: 1
+    severity: high
+
+  - name: "integration-spike-deviation-param-change"
+    description: "Parameter deviation auto-updates plan and continues"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full test/fixtures/integration-spike.md"
+    timeout: 300
+    expect:
+      # Detects API format differs from assumed
+      file_contains:
+        file: "specs/*/spike-report.md"
+        content:
+          - "deviation"
+      # Creates validated plan with adjustments
+      files_exist:
+        - "specs/*/validated-plan.md"
+    severity: medium
+
+  - name: "integration-spike-blocker-halts"
+    description: "Blocker assumption (fake API) halts workflow"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full test/fixtures/integration-spike.md"
+    timeout: 180
+    expect:
+      # Spike finds blocker (fake URL doesn't exist)
+      output_contains:
+        - "BLOCKER"
+        - "fake-weather"
+      # Halts workflow
+      workflow_state:
+        status: "blocked"
+      # Provides suggestions
+      output_contains:
+        - "Suggestion"
+        - "alternative"
+      # State preserved for manual intervention
+      files_exist:
+        - "specs/*/.workflow-state.json"
+    severity: critical
+
+  - name: "integration-spike-nonexistent-package"
+    description: "Reference to nonexistent npm package triggers deviation"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full test/fixtures/integration-spike.md"
+    timeout: 180
+    expect:
+      output_contains:
+        - "fake-weather-client"
+        - "not found"
+      # Records as tech_swap or blocker deviation
+      file_contains:
+        file: "specs/*/spike-report.md"
+        content:
+          - "REFUTED"
+          - "deviation"
+    severity: high
+
+  # ---------------------------------------------------------------------------
+  # Verification Flow: UI, API, CLI Task Verification
+  # ---------------------------------------------------------------------------
+
+  - name: "integration-verify-ui-tasks"
+    description: "UI tasks verified via browser automation"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/ui-feature
+      cat > specs/ui-feature/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "ui-feature",
+        "phase": "verify",
+        "status": "in_progress",
+        "iterations": {"spike": 0, "analyze": 1, "clarify": 0, "verify": 0, "review": 0, "workflow": 0},
+        "completedTasks": ["T001"],
+        "limits": {"analyze": 5, "verify": 3, "verifyRetry": 2, "review": 5}
+      }
+      EOF
+      cat > specs/ui-feature/tasks.md << 'EOF'
+      # Tasks
+      - [X] T001: Add login button
+        - **Verify**: UI | Navigate to /login -> button with text "Sign In" visible
+      EOF
+      mkdir -p src
+      cat > src/login.html << 'EOF'
+      <html><body><button>Sign In</button></body></html>
+      EOF
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/ui-feature"
+    expect:
+      output_contains:
+        - "UI"
+        - "browser"
+        - "snapshot"
+      # Uses agent-browser skill
+      output_contains:
+        - "ab navigate"
+    severity: high
+
+  - name: "integration-verify-api-tasks"
+    description: "API tasks verified via HTTP requests"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/api-feature
+      cat > specs/api-feature/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "api-feature",
+        "phase": "verify",
+        "status": "in_progress",
+        "iterations": {"spike": 0, "analyze": 1, "verify": 0, "review": 0},
+        "completedTasks": ["T001"],
+        "limits": {"verify": 3, "verifyRetry": 2, "review": 5}
+      }
+      EOF
+      cat > specs/api-feature/tasks.md << 'EOF'
+      # Tasks
+      - [X] T001: Create /api/health endpoint
+        - **Verify**: API | GET /api/health -> 200 + {"status": "ok"}
+      EOF
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/api-feature"
+    expect:
+      output_contains:
+        - "API"
+        - "HTTP"
+        - "GET"
+      # Captures response
+      file_contains:
+        file: "verification-report.md"
+        content:
+          - "API"
+          - "200"
+    severity: high
+
+  - name: "integration-verify-cli-tasks"
+    description: "CLI tasks verified via bash execution"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/cli-feature
+      cat > specs/cli-feature/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "cli-feature",
+        "phase": "verify",
+        "status": "in_progress",
+        "iterations": {"spike": 0, "analyze": 1, "verify": 0, "review": 0},
+        "completedTasks": ["T001"],
+        "limits": {"verify": 3, "verifyRetry": 2, "review": 5}
+      }
+      EOF
+      cat > specs/cli-feature/tasks.md << 'EOF'
+      # Tasks
+      - [X] T001: Add version command
+        - **Verify**: CLI | ./cli --version -> outputs "1.0.0"
+      EOF
+      echo '#!/bin/bash\necho "1.0.0"' > cli && chmod +x cli
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/cli-feature"
+    expect:
+      output_contains:
+        - "CLI"
+        - "Bash"
+      # Captures stdout
+      file_contains:
+        file: "verification-report.md"
+        content:
+          - "CLI"
+          - "stdout"
+    severity: high
+
+  - name: "integration-verify-test-suite-regression"
+    description: "Failing existing tests halt verification"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/test-feature
+      cat > specs/test-feature/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "test-feature",
+        "phase": "verify",
+        "status": "in_progress",
+        "completedTasks": ["T001"],
+        "iterations": {"verify": 0},
+        "limits": {"verify": 3}
+      }
+      EOF
+      cat > specs/test-feature/tasks.md << 'EOF'
+      # Tasks
+      - [X] T001: Feature implementation
+        - **Verify**: TEST | yarn test passes
+      EOF
+      echo '{"scripts": {"test": "exit 1"}}' > package.json
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/test-feature"
+    expect:
+      output_contains:
+        - "tests failed"
+        - "REGRESSION"
+      workflow_state:
+        status: ["failed", "halted"]
+    severity: critical
+
+  # ---------------------------------------------------------------------------
+  # Review Flow: Code with Issues to Trigger Fixes
+  # ---------------------------------------------------------------------------
+
+  - name: "integration-review-spawns-all-reviewers"
+    description: "Review phase spawns 5 specialized reviewers in parallel"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/review-feature
+      cat > specs/review-feature/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "review-feature",
+        "phase": "review",
+        "status": "in_progress",
+        "completedTasks": ["T001"],
+        "verificationResults": [{"task_id": "T001", "status": "VERIFIED"}],
+        "iterations": {"review": 0},
+        "limits": {"review": 5}
+      }
+      EOF
+      cat > specs/review-feature/spec.md << 'EOF'
+      # Spec
+      - User login feature
+      EOF
+      cat > specs/review-feature/plan.md << 'EOF'
+      # Plan
+      - Login endpoint
+      EOF
+      cat > specs/review-feature/tasks.md << 'EOF'
+      # Tasks
+      - [V] T001: Login endpoint
+      EOF
+      mkdir -p src
+      echo 'export const login = () => {}' > src/auth.ts
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/review-feature"
+    expect:
+      # All 5 reviewers spawn
+      agents_spawned:
+        min: 5
+        names_contain:
+          - "functional"
+          - "architecture"
+          - "contract"
+          - "quality"
+          - "coverage"
+      # Creates review report
+      files_exist:
+        - "review-report.md"
+      file_contains:
+        file: "review-report.md"
+        content:
+          - "Summary"
+          - "Reviewer"
+    severity: high
+
+  - name: "integration-review-critical-issue-triggers-fix"
+    description: "Critical review issue triggers auto-fix and re-review"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/security-issue
+      cat > specs/security-issue/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "security-issue",
+        "phase": "review",
+        "status": "in_progress",
+        "completedTasks": ["T001"],
+        "verificationResults": [{"task_id": "T001", "status": "VERIFIED"}],
+        "iterations": {"review": 0},
+        "limits": {"review": 5}
+      }
+      EOF
+      cat > specs/security-issue/spec.md << 'EOF'
+      # Spec
+      - Secure API endpoint
+      EOF
+      cat > specs/security-issue/plan.md << 'EOF'
+      # Plan
+      - Auth middleware
+      EOF
+      cat > specs/security-issue/tasks.md << 'EOF'
+      # Tasks
+      - [V] T001: API endpoint
+      EOF
+      mkdir -p src
+      # Intentional security issue: hardcoded credential
+      cat > src/api.ts << 'EOF'
+      const API_KEY = "sk-12345-secret-key";  // CRITICAL: hardcoded secret
+      export const callApi = () => fetch('/api', { headers: { 'X-API-Key': API_KEY } });
+      EOF
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/security-issue"
+    expect:
+      output_contains:
+        - "CRITICAL"
+        - "hardcoded"
+        - "secret"
+      # Attempts auto-fix
+      output_contains:
+        - "Auto-fixing"
+        - "re-review"
+      # Increments review iteration
+      workflow_state:
+        iterations.review:
+          min: 1
+    severity: critical
+
+  - name: "integration-review-limit-exceeded-halts"
+    description: "Review loop exceeding limit halts with diagnostic"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/unfixable
+      cat > specs/unfixable/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "unfixable",
+        "phase": "review",
+        "status": "in_progress",
+        "completedTasks": ["T001"],
+        "iterations": {"review": 4},
+        "issues": [{"severity": "CRITICAL", "description": "Unfixable architectural issue"}],
+        "limits": {"review": 5}
+      }
+      EOF
+      cat > specs/unfixable/spec.md << 'EOF'
+      # Spec
+      EOF
+      cat > specs/unfixable/plan.md << 'EOF'
+      # Plan
+      EOF
+      cat > specs/unfixable/tasks.md << 'EOF'
+      # Tasks
+      - [V] T001: Done
+      EOF
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/unfixable"
+    expect:
+      output_contains:
+        - "limit"
+        - "exceeded"
+        - "HALT"
+        - "critical issues"
+      workflow_state:
+        status: ["failed", "halted"]
+        iterations.review: 5
+    severity: high
+
+  # ---------------------------------------------------------------------------
+  # Error Recovery: Various Failure Modes
+  # ---------------------------------------------------------------------------
+
+  - name: "integration-error-state-corrupted"
+    description: "Corrupted state file handled gracefully"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/corrupted
+      echo 'not valid json {{{{' > specs/corrupted/.workflow-state.json
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/corrupted"
+    expect:
+      output_contains:
+        - "corrupted"
+        - "invalid"
+        - "error"
+      # Offers recovery options
+      output_contains:
+        - "reset"
+        - "manual"
+      exit_gracefully: true
+    severity: critical
+
+  - name: "integration-error-missing-artifacts"
+    description: "Missing spec/plan during resume detected and reported"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/missing-files
+      cat > specs/missing-files/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "missing-files",
+        "phase": "tasks",
+        "status": "in_progress",
+        "iterations": {"spike": 1, "analyze": 1},
+        "limits": {"analyze": 5}
+      }
+      EOF
+      # Note: spec.md and plan.md intentionally missing
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/missing-files"
+    expect:
+      output_contains:
+        - "missing"
+        - "spec.md"
+      # Suggests re-running earlier phase
+      output_contains:
+        - "re-run"
+        - "specify"
+      exit_gracefully: true
+    severity: high
+
+  - name: "integration-error-agent-timeout"
+    description: "Agent timeout during implement retries then marks failed"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/timeout-test
+      cat > specs/timeout-test/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "timeout-test",
+        "phase": "implement",
+        "status": "in_progress",
+        "completedTasks": [],
+        "taskRetries": {"T001": 2},
+        "limits": {"implementTaskRetry": 3}
+      }
+      EOF
+      cat > specs/timeout-test/spec.md << 'EOF'
+      # Spec
+      EOF
+      cat > specs/timeout-test/plan.md << 'EOF'
+      # Plan
+      EOF
+      cat > specs/timeout-test/tasks.md << 'EOF'
+      # Tasks
+      - [ ] T001: Task that will timeout
+      - [ ] T002: Normal task
+      EOF
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/timeout-test"
+    timeout: 120
+    expect:
+      # Retries once then marks failed
+      output_contains:
+        - "retry"
+        - "T001"
+      # Continues with other tasks
+      output_contains:
+        - "T002"
+      # Records failure in state
+      workflow_state:
+        taskRetries.T001:
+          min: 3
+    severity: medium
+
+  - name: "integration-error-git-conflict"
+    description: "Git conflict halts and requires manual resolution"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/git-conflict
+      cd specs/git-conflict
+      git init
+      echo 'original' > file.txt
+      git add file.txt && git commit -m "initial"
+      git checkout -b feature
+      echo 'feature change' > file.txt
+      git add file.txt && git commit -m "feature"
+      git checkout main
+      echo 'main change' > file.txt
+      git add file.txt && git commit -m "main"
+      git checkout feature
+      # Now there's a conflict waiting
+      cat > .workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "git-conflict",
+        "phase": "complete",
+        "status": "in_progress"
+      }
+      EOF
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/git-conflict"
+    expect:
+      output_contains:
+        - "conflict"
+        - "manual"
+        - "resolution"
+      exit_gracefully: true
+    severity: high
+
+  - name: "integration-error-analyze-limit"
+    description: "Analyze loop limit halts with full diagnostic"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/analyze-loop
+      cat > specs/analyze-loop/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "analyze-loop",
+        "phase": "analyze",
+        "status": "in_progress",
+        "iterations": {"spike": 1, "analyze": 4, "clarify": 0},
+        "issues": [{"severity": "CRITICAL", "description": "Persistent issue"}],
+        "limits": {"analyze": 5}
+      }
+      EOF
+      cat > specs/analyze-loop/spec.md << 'EOF'
+      # Spec with impossible requirement
+      - Do the impossible thing that cannot be analyzed
+      EOF
+      cat > specs/analyze-loop/plan.md << 'EOF'
+      # Plan
+      EOF
+      cat > specs/analyze-loop/tasks.md << 'EOF'
+      # Tasks
+      - [ ] T001: Impossible task
+      EOF
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/analyze-loop"
+    expect:
+      output_contains:
+        - "Analyze loop exceeded"
+        - "limit"
+        - "issues remain"
+      # Lists unresolved issues
+      output_contains:
+        - "CRITICAL"
+        - "Persistent issue"
+      workflow_state:
+        status: ["failed", "halted"]
+        iterations.analyze: 5
+    severity: high
+
+  - name: "integration-error-graceful-recovery"
+    description: "Plan file with errors shows graceful degradation"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full test/fixtures/integration-errors.md"
+    timeout: 300
+    setup: |
+      mkdir -p {{working_dir}}
+      cd {{working_dir}}
+      git init
+      echo '{"name": "test", "scripts": {"test": "echo ok"}}' > package.json
+    expect:
+      # Identifies problematic elements
+      output_contains:
+        - "ambiguous"
+        - "contradictory"
+      # Proceeds with warnings rather than crash
+      exit_gracefully: true
+      # Saves state for debugging
+      files_exist:
+        - "specs/*/.workflow-state.json"
+    severity: medium
+
+  # ---------------------------------------------------------------------------
+  # State Persistence: Verify State Updates at Each Phase
+  # ---------------------------------------------------------------------------
+
+  - name: "integration-state-timestamps-updated"
+    description: "State timestamps updated after each phase"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full test/fixtures/integration-simple.md"
+    timeout: 300
+    expect:
+      json_file: "specs/*/.workflow-state.json"
+      json_values:
+        timestamps.started:
+          type: string
+          format: iso8601
+        timestamps.lastUpdated:
+          type: string
+          format: iso8601
+          recent: 60
+        timestamps.phaseStarted:
+          type: string
+          format: iso8601
+    severity: medium
+
+  - name: "integration-state-iterations-tracked"
+    description: "Iteration counts tracked correctly"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full test/fixtures/integration-simple.md"
+    timeout: 300
+    expect:
+      json_file: "specs/*/.workflow-state.json"
+      json_values:
+        iterations:
+          type: object
+          required:
+            - spike
+            - analyze
+            - clarify
+            - verify
+            - review
+            - workflow
+    severity: medium
+
+  - name: "integration-state-agent-count-tracked"
+    description: "Agent spawn counts tracked in state"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full test/fixtures/integration-simple.md"
+    timeout: 300
+    expect:
+      json_file: "specs/*/.workflow-state.json"
+      json_values:
+        agents.spawned:
+          type: number
+          min: 1
+        agents.completed:
+          type: number
+          min: 0
+        agents.failed:
+          type: number
+          min: 0
+    severity: low
+
 # ============================================================================
 # BENCHMARKS
 # ============================================================================

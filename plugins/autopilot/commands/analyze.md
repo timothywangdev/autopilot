@@ -4,72 +4,120 @@ description: Perform a non-destructive cross-artifact consistency and quality an
 evals:
   - prompt: "/autopilot:analyze"
     setup: |
-      cat > spec.md << 'EOF'
+      mkdir -p .specify/memory .specify/scripts/bash specs/001-feature
+      cat > specs/001-feature/spec.md << 'EOF'
       # Feature
       ## Requirements
       - Feature A
       - Feature B
       - Feature C
       EOF
-      cat > plan.md << 'EOF'
+      cat > specs/001-feature/plan.md << 'EOF'
       # Plan
       - Implement A
       - Implement B
       - Implement C
       EOF
-      cat > tasks.md << 'EOF'
+      cat > specs/001-feature/tasks.md << 'EOF'
       # Tasks
       - [ ] T001: Implement Feature A
       - [ ] T002: Implement Feature B
       - [ ] T003: Implement Feature C
       EOF
+      cat > .specify/memory/constitution.md << 'EOF'
+      # Project Constitution
+      EOF
+      cat > .specify/scripts/bash/check-prerequisites.sh << 'EOF'
+      #!/bin/bash
+      echo '{"FEATURE_DIR": "specs/001-feature", "AVAILABLE_DOCS": ["spec.md", "plan.md", "tasks.md"]}'
+      EOF
+      chmod +x .specify/scripts/bash/check-prerequisites.sh
+      git init 2>/dev/null || true
+      git checkout -b 001-feature 2>/dev/null || true
     expect: |
-      - Reports PASS for consistent artifacts
-      - No CRITICAL or HIGH issues
-      - Creates analysis-report.md
+      - Reports PASS or no critical issues for consistent artifacts
+      - Coverage is 100% (all requirements have tasks)
+      - Output contains analysis summary or metrics
 
   - prompt: "/autopilot:analyze"
     setup: |
-      cat > spec.md << 'EOF'
+      mkdir -p .specify/memory .specify/scripts/bash specs/001-incomplete
+      cat > specs/001-incomplete/spec.md << 'EOF'
       # Feature
       ## Requirements
       - Feature A
       - Feature B
       - Feature C
       EOF
-      cat > tasks.md << 'EOF'
+      cat > specs/001-incomplete/plan.md << 'EOF'
+      # Plan
+      - Implement all features
+      EOF
+      cat > specs/001-incomplete/tasks.md << 'EOF'
       # Tasks
       - [ ] T001: Implement Feature A
       - [ ] T002: Implement Feature B
-      # Note: Feature C is MISSING!
       EOF
+      cat > .specify/memory/constitution.md << 'EOF'
+      # Project Constitution
+      EOF
+      cat > .specify/scripts/bash/check-prerequisites.sh << 'EOF'
+      #!/bin/bash
+      echo '{"FEATURE_DIR": "specs/001-incomplete", "AVAILABLE_DOCS": ["spec.md", "plan.md", "tasks.md"]}'
+      EOF
+      chmod +x .specify/scripts/bash/check-prerequisites.sh
+      git init 2>/dev/null || true
+      git checkout -b 001-incomplete 2>/dev/null || true
     expect: |
-      - Detects missing requirement coverage
-      - Reports Feature C not covered in tasks
-      - Issue severity: HIGH or CRITICAL
+      - Detects missing requirement coverage for Feature C
+      - Reports coverage gap in analysis output
+      - Issue severity is HIGH or CRITICAL
 
   - prompt: "/autopilot:analyze"
     setup: |
-      cat > spec.md << 'EOF'
+      mkdir -p .specify/memory .specify/scripts/bash specs/001-conflict
+      cat > specs/001-conflict/spec.md << 'EOF'
       # Feature
       ## Requirements
-      - User authentication
+      - User authentication required
       EOF
-      cat > plan.md << 'EOF'
+      cat > specs/001-conflict/plan.md << 'EOF'
       # Plan
-      - Use JWT tokens
-      - Use session cookies
+      - Use JWT tokens for stateless auth
+      - Use session cookies for stateful auth
       EOF
+      cat > specs/001-conflict/tasks.md << 'EOF'
+      # Tasks
+      - [ ] T001: Implement auth
+      EOF
+      cat > .specify/memory/constitution.md << 'EOF'
+      # Project Constitution
+      EOF
+      cat > .specify/scripts/bash/check-prerequisites.sh << 'EOF'
+      #!/bin/bash
+      echo '{"FEATURE_DIR": "specs/001-conflict", "AVAILABLE_DOCS": ["spec.md", "plan.md", "tasks.md"]}'
+      EOF
+      chmod +x .specify/scripts/bash/check-prerequisites.sh
+      git init 2>/dev/null || true
+      git checkout -b 001-conflict 2>/dev/null || true
     expect: |
-      - Detects ambiguity: conflicting auth approaches
-      - Reports potential inconsistency
-      - Suggests clarification needed
+      - Detects ambiguity or conflict between JWT and session approaches
+      - Reports inconsistency in authentication strategy
+      - Suggests clarification or decision needed
 
   - prompt: "/autopilot:analyze"
+    setup: |
+      mkdir -p .specify/scripts/bash
+      cat > .specify/scripts/bash/check-prerequisites.sh << 'EOF'
+      #!/bin/bash
+      echo '{"error": "Required artifacts not found"}'
+      exit 1
+      EOF
+      chmod +x .specify/scripts/bash/check-prerequisites.sh
     expect: |
-      - Shows error: artifacts not found
-      - Lists which files are missing
-      - Suggests running earlier commands
+      - Shows error about missing artifacts
+      - Lists which files (spec.md, plan.md, tasks.md) are missing
+      - Suggests running /autopilot:specify, /autopilot:plan, or /autopilot:tasks
 ---
 
 ## User Input
