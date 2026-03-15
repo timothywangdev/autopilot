@@ -183,12 +183,58 @@ Update state file **after each phase completion** and **before each phase start*
 
 ## Execution Flow
 
+### Phase 0: Watchdog Setup
+
+**SPAWN WATCHDOG AGENT** (runs in background, monitors entire workflow):
+
+```
+Agent(
+    description: "Watchdog: monitor autopilot workflow",
+    run_in_background: true,
+    prompt: |
+        You are the WATCHDOG for autopilot:full workflow.
+
+        ## Your Job
+        Monitor the workflow for failures. Check every 30 seconds:
+        1. Read .workflow-state.json to get current phase
+        2. Verify expected artifacts exist for completed phases:
+           - After "specify": spec.md must exist and NOT be template
+           - After "plan": plan.md must exist
+           - After "tasks": tasks.md must exist with T001+ format
+        3. If artifacts missing for "completed" phase → ALERT
+
+        ## Validation Rules
+        ```bash
+        # spec.md validation
+        if grep -q '\[FEATURE NAME\]' spec.md; then
+            echo "WATCHDOG ALERT: spec.md is template, not generated!"
+        fi
+
+        # tasks.md validation
+        if ! grep -qE 'T[0-9]{3}' tasks.md; then
+            echo "WATCHDOG ALERT: tasks.md has no valid task IDs!"
+        fi
+        ```
+
+        ## On Anomaly
+        If you detect workflow claiming success without artifacts:
+        1. Print: "WATCHDOG: Workflow anomaly detected!"
+        2. Print exactly what's missing
+        3. Print: "Recommend: Re-run failed phase or abort"
+
+        ## Heartbeat
+        Every 60 seconds, print:
+        "WATCHDOG: Phase={phase}, Status={status}, Artifacts=[list]"
+)
+```
+
 ### Phase 1: Initialize
 
 1. Parse input mode (new vs resume)
 2. If new:
    - Read plan file content
-   - Run `.specify/scripts/bash/create-new-feature.sh` to create feature branch (extract short name from plan)
+   - Create feature directory: `mkdir -p specs/${FEATURE_NAME}`
+   - Copy original plan: `cp ${PLAN_FILE} specs/${FEATURE_NAME}/original-plan.md`
    - Initialize `.workflow-state.json`
 3. If resume:
    - Load `.workflow-state.json`
@@ -361,25 +407,135 @@ Update state file **after each phase completion** and **before each phase start*
 
 ### Phase 3: Specify
 
-1. Update state: `phase: "specify"`
-2. Execute `/autopilot:specify` with **validated-plan.md** content (not original)
-3. Validate outputs exist: `spec.md`, `checklists/requirements.md`
-4. Update state: mark specify complete
+**CRITICAL: This phase MUST run. Do NOT skip even if the plan is detailed.**
 
-### Phase 3: Plan
+1. Update state: `phase: "specify"`
+
+2. **INVOKE the skill** (do not just describe, actually invoke it):
+   ```
+   Use the Skill tool:
+   skill: "autopilot:specify"
+   args: <content of validated-plan.md OR path to validated-plan.md>
+   ```
+
+3. **HARD VALIDATION GATE** — run these bash commands and HALT if they fail:
+   ```bash
+   # Check spec.md exists and is NOT the template
+   SPEC_FILE="specs/${FEATURE_DIR}/spec.md"
+   if [ ! -f "$SPEC_FILE" ]; then
+       echo "ERROR: spec.md not created. /autopilot:specify failed."
+       exit 1
+   fi
+
+   # Check spec.md is NOT the template (must have actual content, not placeholders)
+   if grep -q '\[FEATURE NAME\]' "$SPEC_FILE" || grep -q '{{FEATURE_NAME}}' "$SPEC_FILE"; then
+       echo "ERROR: spec.md is still the template. Specify phase did not generate content."
+       exit 1
+   fi
+
+   # Check spec.md has required sections filled in
+   if grep -q '\[Brief Title\]' "$SPEC_FILE" || grep -q '\[DATE\]' "$SPEC_FILE"; then
+       echo "ERROR: spec.md has unfilled placeholders."
+       exit 1
+   fi
+
+   # Check minimum content length (template is ~4KB, real spec should be larger)
+   SPEC_SIZE=$(wc -c < "$SPEC_FILE")
+   if [ "$SPEC_SIZE" -lt 2000 ]; then
+       echo "ERROR: spec.md is too small ($SPEC_SIZE bytes). Expected >2000 bytes."
+       exit 1
+   fi
+
+   echo "✓ spec.md validation passed ($SPEC_SIZE bytes)"
+   ```
+
+4. If validation fails: **DO NOT PROCEED**. Re-run `/autopilot:specify` or HALT.
+
+5. Update state: mark specify complete ONLY after validation passes
+
+### Phase 4: Plan
+
+**CRITICAL: This phase MUST run. Do NOT skip.**
 
 1. Update state: `phase: "plan"`
-2. Execute `/autopilot.plan`
-3. Validate outputs: `plan.md`, `research.md` (optional: `data-model.md`, `contracts/*`, `quickstart.md`)
-4. Update state: mark plan complete
 
-### Phase 4: Tasks
+2. **INVOKE the skill**:
+   ```
+   Use the Skill tool:
+   skill: "autopilot:plan"
+   ```
+
+3. **HARD VALIDATION GATE**:
+   ```bash
+   PLAN_FILE="specs/${FEATURE_DIR}/plan.md"
+   if [ ! -f "$PLAN_FILE" ]; then
+       echo "ERROR: plan.md not created. /autopilot:plan failed."
+       exit 1
+   fi
+
+   # Check plan.md is not empty/template
+   PLAN_SIZE=$(wc -c < "$PLAN_FILE")
+   if [ "$PLAN_SIZE" -lt 1000 ]; then
+       echo "ERROR: plan.md is too small ($PLAN_SIZE bytes). Expected >1000 bytes."
+       exit 1
+   fi
+
+   # Check plan.md has architecture content
+   if ! grep -qi "architecture\|component\|module\|data\|api\|interface" "$PLAN_FILE"; then
+       echo "ERROR: plan.md missing architecture content."
+       exit 1
+   fi
+
+   echo "✓ plan.md validation passed ($PLAN_SIZE bytes)"
+   ```
+
+4. If validation fails: **DO NOT PROCEED**. Re-run `/autopilot:plan` or HALT.
+
+5. Update state: mark plan complete ONLY after validation passes
+
+### Phase 5: Tasks
+
+**CRITICAL: This phase MUST run. Do NOT skip.**
 
 1. Update state: `phase: "tasks"`
-2. Execute `/autopilot.tasks`
-3. Validate output: `tasks.md` with proper format
-4. Parse task count and store in state
-5. Update state: mark tasks complete
+
+2. **INVOKE the skill**:
+   ```
+   Use the Skill tool:
+   skill: "autopilot:tasks"
+   ```
+
+3. **HARD VALIDATION GATE**:
+   ```bash
+   TASKS_FILE="specs/${FEATURE_DIR}/tasks.md"
+   if [ ! -f "$TASKS_FILE" ]; then
+       echo "ERROR: tasks.md not created. /autopilot:tasks failed."
+       exit 1
+   fi
+
+   # Check tasks.md has task format (T001, T002, etc.)
+   TASK_COUNT=$(grep -cE '^\s*-\s*\[\s*[X ]\s*\]\s*T[0-9]{3}' "$TASKS_FILE" || echo "0")
+   if [ "$TASK_COUNT" -lt 1 ]; then
+       echo "ERROR: tasks.md has no valid tasks (expected T001, T002, etc. format)."
+       exit 1
+   fi
+
+   # Check tasks.md has phases
+   if ! grep -qi "^##.*phase" "$TASKS_FILE"; then
+       echo "ERROR: tasks.md missing phase organization."
+       exit 1
+   fi
+
+   echo "✓ tasks.md validation passed ($TASK_COUNT tasks found)"
+   ```
+
+4. If validation fails: **DO NOT PROCEED**. Re-run `/autopilot:tasks` or HALT.
+
+5. Store task count in state: `state.taskCount = $TASK_COUNT`
+
+6. Update state: mark tasks complete ONLY after validation passes
+
+### Phase 6: Analyze Loop
 
 ### Phase 5: Analyze Loop
 
@@ -427,7 +583,38 @@ IF changes made to spec.md:
         WARN "Clarify loop limit reached, proceeding with current state"
 ```
 
-### Phase 7: Implement (Team Spawn)
+### Phase 8: Implement (Team Spawn)
+
+**PREREQUISITE CHECK** — Verify all required artifacts exist before implementation:
+
+```bash
+FEATURE_DIR="specs/${FEATURE_NAME}"
+
+# Check ALL required artifacts exist
+REQUIRED_FILES=("spec.md" "plan.md" "tasks.md")
+MISSING=""
+
+for file in "${REQUIRED_FILES[@]}"; do
+    if [ ! -f "$FEATURE_DIR/$file" ]; then
+        MISSING="$MISSING $file"
+    fi
+done
+
+if [ -n "$MISSING" ]; then
+    echo "ERROR: Cannot start implementation. Missing artifacts:$MISSING"
+    echo "Re-run the failed phases or use --resume to continue from last phase."
+    exit 1
+fi
+
+# Validate tasks.md has actual tasks
+TASK_COUNT=$(grep -cE '^\s*-\s*\[\s*[X ]\s*\]\s*T[0-9]{3}' "$FEATURE_DIR/tasks.md" || echo "0")
+if [ "$TASK_COUNT" -lt 1 ]; then
+    echo "ERROR: tasks.md exists but has no valid tasks."
+    exit 1
+fi
+
+echo "✓ Pre-implementation check passed. Found $TASK_COUNT tasks."
+```
 
 1. Update state: `phase: "implement"`
 2. Parse `tasks.md` to extract all tasks
@@ -935,9 +1122,55 @@ IF only HIGH/MEDIUM/LOW:
     Proceed to completion
 ```
 
-### Phase 10: Completion
+### Phase 11: Completion
 
-1. Update state: `phase: "complete"`, `status: "done"`
+**FINAL VALIDATION GATE** — Verify ALL required artifacts exist before declaring success:
+
+```bash
+FEATURE_DIR="specs/${FEATURE_NAME}"
+
+echo "Running final artifact validation..."
+
+# Required artifacts
+REQUIRED_FILES=(
+    "original-plan.md"
+    "spec.md"
+    "plan.md"
+    "tasks.md"
+)
+
+MISSING=""
+for file in "${REQUIRED_FILES[@]}"; do
+    if [ ! -f "$FEATURE_DIR/$file" ]; then
+        MISSING="$MISSING $file"
+    fi
+done
+
+if [ -n "$MISSING" ]; then
+    echo "ERROR: CANNOT mark as complete. Missing artifacts:$MISSING"
+    echo "This indicates phases were skipped. Workflow is BROKEN."
+    exit 1
+fi
+
+# Validate spec.md is not template
+if grep -q '\[FEATURE NAME\]' "$FEATURE_DIR/spec.md"; then
+    echo "ERROR: spec.md is still the unfilled template!"
+    exit 1
+fi
+
+# Validate tasks.md has tasks
+TASK_COUNT=$(grep -cE '^\s*-\s*\[\s*[X ]\s*\]\s*T[0-9]{3}' "$FEATURE_DIR/tasks.md" || echo "0")
+if [ "$TASK_COUNT" -lt 1 ]; then
+    echo "ERROR: tasks.md has no valid tasks!"
+    exit 1
+fi
+
+# Check completed vs total
+COMPLETED=$(grep -cE '^\s*-\s*\[X\]' "$FEATURE_DIR/tasks.md" || echo "0")
+echo "✓ Final validation passed: $COMPLETED/$TASK_COUNT tasks completed"
+```
+
+1. Update state: `phase: "complete"`, `status: "done"` **ONLY after validation passes**
 2. Generate final summary:
 
 ```markdown
