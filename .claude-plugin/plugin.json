@@ -13,16 +13,5 @@
     "code-review",
     "team-spawn"
   ],
-  "commands": [
-    "commands/autopilot.full.md",
-    "commands/autopilot.specify.md",
-    "commands/autopilot.plan.md",
-    "commands/autopilot.tasks.md",
-    "commands/autopilot.analyze.md",
-    "commands/autopilot.clarify.md",
-    "commands/autopilot.implement.md",
-    "commands/autopilot.checklist.md",
-    "commands/autopilot.constitution.md",
-    "commands/autopilot.taskstoissues.md"
-  ]
+  "commands": "../commands/"
 }
