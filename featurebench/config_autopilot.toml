@@ -1,0 +1,25 @@
+# FeatureBench configuration for Autopilot agent
+# Copy to FeatureBench directory as config.toml
+
+[env_vars]
+HF_ENDPOINT=""
+HF_TOKEN=""
+GITHUB_TOKEN=""
+
+[infer]
+download_cache_dir=""  # Set to absolute path for caching
+
+# Autopilot Agent Configuration
+[infer_config.autopilot]
+# Required: Anthropic API Key
+ANTHROPIC_API_KEY = ""
+# Optional: Custom API Base URL
+ANTHROPIC_BASE_URL = ""
+# Optional: Lock Claude Code version
+CLAUDE_CODE_VERSION = ""
+
+# Also keep Claude Code config for baseline comparison
+[infer_config.claude_code]
+ANTHROPIC_API_KEY = ""
+ANTHROPIC_BASE_URL = ""
+CLAUDE_CODE_VERSION = ""
