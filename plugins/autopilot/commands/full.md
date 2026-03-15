@@ -1,5 +1,5 @@
 ---
-description: End-to-end feature implementation orchestrator. Takes a plan file and drives through spike (assumption validation) → specify → plan → tasks → analyze → implement → review with automated iteration loops, human checkpoints for significant deviations, and team spawning.
+description: End-to-end feature implementation orchestrator. Takes a plan file and drives through spike (assumption validation) → specify → plan → tasks → analyze → implement → verify (prove tasks work) → review with automated iteration loops, human checkpoints for significant deviations, and team spawning.
 ---
 
 ## User Input
@@ -52,16 +52,20 @@ specs/NNN-feature/.workflow-state.json
     "spike": 0,
     "analyze": 0,
     "clarify": 0,
+    "verify": 0,
     "review": 0,
     "workflow": 0
   },
   "spikeResults": [],
   "checkpointDecisions": [],
+  "verificationResults": [],
   "taskRetries": {},
   "limits": {
     "analyze": 5,
     "clarify": 3,
     "implementTaskRetry": 3,
+    "verify": 3,
+    "verifyRetry": 2,
     "review": 5,
     "workflow": 3
   },
@@ -424,10 +428,225 @@ FOR each completed agent:
 5. After all tasks: Validate all tasks marked complete
 6. If incomplete tasks remain: Report which failed and why
 
-### Phase 8: Review (Team Spawn)
+### Phase 8: Verify (Prove Tasks Work)
+
+**Purpose**: Prove each task ACTUALLY works through real execution. Code written ≠ task complete.
+
+1. Update state: `phase: "verify"`
+
+2. **Parse Verification Criteria**: Extract from tasks.md the `Verify:` line for each task:
+   ```markdown
+   - [X] T001: Add login button to navbar
+     - **Verify**: UI | Click login button → modal appears
+
+   - [X] T002: Create /api/auth endpoint
+     - **Verify**: API | POST /api/auth {email, pass} → 200 + token
+
+   - [X] T003: Add user to database on signup
+     - **Verify**: DB | After signup, query users table → new row exists
+   ```
+
+3. **Classify Verification Method**:
+
+   | Task Type | Indicator | Verification Tool | Method |
+   |-----------|-----------|-------------------|--------|
+   | UI | `Verify: UI \|` | Playwright MCP | Browser automation |
+   | API | `Verify: API \|` | fetch/curl | HTTP request |
+   | CLI | `Verify: CLI \|` | Bash | Execute command |
+   | DB | `Verify: DB \|` | DB client | Query database |
+   | Test | `Verify: TEST \|` | vitest/jest | Run test file |
+   | Integration | `Verify: E2E \|` | Playwright MCP | Full flow test |
+
+4. **Run Verifications in Parallel** (team spawn by type):
+
+   ```
+   # Group tasks by verification type for efficient execution
+   ui_tasks = [t for t in tasks if t.verify_type == "UI"]
+   api_tasks = [t for t in tasks if t.verify_type == "API"]
+   # ... etc
+
+   # Spawn verification agents - one per task type group
+   # UI tasks MUST use Playwright MCP browser tools
+
+   FOR each task:
+       Agent(
+           description: "Verify: {task_id}",
+           run_in_background: true,
+           prompt: |
+               You are verifying task {task_id} ACTUALLY works.
+
+               ## Task
+               {task_description}
+
+               ## Verification Criteria
+               Type: {verify_type}
+               Expected: {expected_behavior}
+
+               ## Instructions by Type
+
+               ### If UI verification:
+               Use Playwright MCP browser tools:
+               1. browser_navigate to the relevant page (localhost or deployed URL)
+               2. browser_snapshot to see current state
+               3. browser_click / browser_fill_form as needed
+               4. browser_snapshot to capture result
+               5. Compare against expected behavior
+
+               ### If API verification:
+               1. Make actual HTTP request using fetch or curl
+               2. Capture response status, headers, body
+               3. Compare against expected response
+
+               ### If CLI verification:
+               1. Execute the command via Bash
+               2. Capture stdout, stderr, exit code
+               3. Compare against expected output
+
+               ### If DB verification:
+               1. Connect to database
+               2. Execute query
+               3. Verify expected state exists
+
+               ### If TEST verification:
+               1. Run the specific test file/suite
+               2. Capture pass/fail results
+               3. All tests must pass
+
+               ## Output Format
+               ```json
+               {
+                   "task_id": "{task_id}",
+                   "status": "VERIFIED|FAILED",
+                   "verify_type": "{type}",
+                   "evidence": {
+                       "method": "{what was executed}",
+                       "command_or_url": "{actual command/URL}",
+                       "expected": "{expected outcome}",
+                       "actual": "{actual outcome}",
+                       "screenshot_path": "{if UI, path to screenshot}",
+                       "response_body": "{if API, response content}",
+                       "stdout": "{if CLI, command output}"
+                   },
+                   "match": true|false,
+                   "failure_reason": "{if failed, why}"
+               }
+               ```
+
+               ## Constraints
+               - MUST execute real verification (no assumptions)
+               - MUST capture evidence (screenshots, outputs, responses)
+               - For UI: Use Playwright MCP tools (browser_navigate, browser_click, etc.)
+               - For API: Make actual HTTP requests
+               - For CLI: Execute actual commands
+               - Report honestly - failed verification is valuable information
+       )
+   ```
+
+5. **Aggregate Verification Results**:
+
+   ```
+   FOR each verification result:
+       IF status == "VERIFIED":
+           Mark task as VERIFIED in tasks.md: [X] → [V]
+           Log: "✓ {task_id} verified"
+           Store evidence in verification-report.md
+
+       IF status == "FAILED":
+           INCREMENT taskRetries[task_id]
+           Log: "✗ {task_id} failed verification: {failure_reason}"
+
+           IF taskRetries[task_id] < limits.verifyRetry:
+               # Re-implement the task with failure context
+               Spawn fix agent with:
+                   - Original task description
+                   - Verification failure reason
+                   - Evidence of what went wrong
+               THEN re-verify
+           ELSE:
+               Mark task as VERIFICATION_FAILED in state
+               Add to verification-report.md as unresolved
+   ```
+
+6. **Generate Verification Report** (`verification-report.md`):
+
+   ```markdown
+   # Verification Report: {feature_name}
+
+   **Date**: {timestamp}
+   **Tasks Verified**: {verified_count}/{total_count}
+
+   ## Summary
+
+   | Status | Count |
+   |--------|-------|
+   | VERIFIED | {n} |
+   | FAILED | {n} |
+   | SKIPPED | {n} |
+
+   ## Verified Tasks
+
+   | Task | Type | Evidence |
+   |------|------|----------|
+   | T001 | UI | [screenshot](./verify/T001.png) |
+   | T002 | API | 200 OK, token returned |
+   | T003 | DB | Row exists: id=123 |
+
+   ## Failed Tasks
+
+   | Task | Type | Expected | Actual | Attempts |
+   |------|------|----------|--------|----------|
+   | T004 | UI | Modal appears | Button not found | 3 |
+
+   ## Evidence Artifacts
+
+   ./verify/
+   ├── T001-screenshot.png
+   ├── T002-response.json
+   └── T003-query-result.txt
+   ```
+
+7. **Verification Gate**:
+
+   ```
+   verified_ratio = verified_count / total_verifiable_count
+
+   IF verified_ratio >= 0.95:
+       Log: "Verification passed ({verified_count}/{total_count})"
+       Continue to Phase 9: Review
+
+   IF verified_ratio >= 0.80:
+       Log: "Verification mostly passed ({verified_count}/{total_count})"
+       Log: "Proceeding with {failed_count} unverified tasks"
+       Continue to Phase 9: Review (with warnings)
+
+   IF verified_ratio < 0.80:
+       Log: "Verification failed ({verified_count}/{total_count})"
+       INCREMENT iterations.verify
+       IF iterations.verify < limits.verify:
+           GOTO Phase 7 (re-implement failed tasks)
+       ELSE:
+           HALT: "Verification loop limit reached"
+           EXIT
+   ```
+
+8. **State Updates**:
+   ```json
+   {
+       "iterations": {
+           "verify": 0
+       },
+       "limits": {
+           "verify": 3,
+           "verifyRetry": 2
+       },
+       "verificationResults": []
+   }
+   ```
+
+### Phase 9: Review (Team Spawn)
 
 1. Update state: `phase: "review"`
-2. Log: "Implementation complete. Starting code review..."
+2. Log: "Verification complete. Starting code review..."
 
 **Spawn 5 Review Agents in Parallel**:
 
@@ -539,7 +758,7 @@ IF only HIGH/MEDIUM/LOW:
     Proceed to completion
 ```
 
-### Phase 9: Completion
+### Phase 10: Completion
 
 1. Update state: `phase: "complete"`, `status: "done"`
 2. Generate final summary:
