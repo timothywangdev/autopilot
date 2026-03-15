@@ -226,63 +226,116 @@ Update state file **after each phase completion** and **before each phase start*
 
 ## Execution Flow
 
-### Phase 0: Watchdog Setup
+### Phase 0: Pre-flight Validation
 
-**SPAWN WATCHDOG AGENT** (runs in background, monitors entire workflow):
+**Before ANY phase runs, validate the environment:**
 
+```bash
+# Pre-flight checks
+echo "=== PRE-FLIGHT CHECKS ==="
+
+# Check .specify directory exists
+if [ ! -d ".specify" ]; then
+    echo "FAIL: .specify directory not found"
+    echo "Run: /autopilot:init first"
+    exit 1
+fi
+
+# Check templates exist
+if [ ! -f ".specify/templates/spec-template.md" ]; then
+    echo "FAIL: spec-template.md not found"
+    exit 1
+fi
+
+# Check git is clean (warn only)
+if ! git diff --quiet 2>/dev/null; then
+    echo "WARN: Uncommitted changes detected"
+fi
+
+echo "PASS: Pre-flight checks complete"
 ```
-Agent(
-    description: "Watchdog: monitor autopilot workflow",
-    run_in_background: true,
-    prompt: |
-        You are the WATCHDOG for autopilot:full workflow.
 
-        ## Your Job
-        Monitor the workflow for failures. Check every 30 seconds:
-        1. Read .workflow-state.json to get current phase
-        2. Verify expected artifacts exist for completed phases:
-           - After "specify": spec.md must exist and NOT be template
-           - After "plan": plan.md must exist
-           - After "tasks": tasks.md must exist with T001+ format
-        3. If artifacts missing for "completed" phase → ALERT
-
-        ## Validation Rules
-        ```bash
-        # spec.md validation
-        if grep -q '\[FEATURE NAME\]' spec.md; then
-            echo "WATCHDOG ALERT: spec.md is template, not generated!"
-        fi
-
-        # tasks.md validation
-        if ! grep -qE 'T[0-9]{3}' tasks.md; then
-            echo "WATCHDOG ALERT: tasks.md has no valid task IDs!"
-        fi
-        ```
-
-        ## On Anomaly
-        If you detect workflow claiming success without artifacts:
-        1. Print: "WATCHDOG: Workflow anomaly detected!"
-        2. Print exactly what's missing
-        3. Print: "Recommend: Re-run failed phase or abort"
-
-        ## Heartbeat
-        Every 60 seconds, print:
-        "WATCHDOG: Phase={phase}, Status={status}, Artifacts=[list]"
-)
-```
+**IMPORTANT**: The watchdog pattern doesn't work reliably (background agents can't poll). Instead, validation is built into EACH phase with mandatory bash checks that HALT on failure.
 
 ### Phase 1: Initialize
 
-1. Parse input mode (new vs resume)
-2. If new:
-   - Read plan file content
-   - Create feature directory: `mkdir -p specs/${FEATURE_NAME}`
-   - Copy original plan: `cp ${PLAN_FILE} specs/${FEATURE_NAME}/original-plan.md`
-   - Initialize `.workflow-state.json`
-3. If resume:
-   - Load `.workflow-state.json`
-   - Validate state integrity
-   - Report current position and resume
+<execution>
+
+**Step 1.1: Parse input and set FEATURE_NAME**
+
+This step MUST run first. All subsequent phases depend on FEATURE_NAME being set.
+
+```bash
+# Parse the plan file to extract feature name
+PLAN_FILE="$1"  # From $ARGUMENTS
+
+if [ ! -f "$PLAN_FILE" ]; then
+    echo "ERROR: Plan file not found: $PLAN_FILE"
+    exit 1
+fi
+
+# Extract feature name from plan (first # heading or filename)
+FEATURE_NAME=$(grep -m1 '^#[^#]' "$PLAN_FILE" | sed 's/^#\s*//' | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')
+if [ -z "$FEATURE_NAME" ]; then
+    FEATURE_NAME=$(basename "$PLAN_FILE" .md | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+fi
+
+# Find next available feature number
+NEXT_NUM=$(ls -d specs/[0-9][0-9][0-9]-* 2>/dev/null | wc -l)
+NEXT_NUM=$((NEXT_NUM + 1))
+FEATURE_DIR=$(printf "specs/%03d-%s" "$NEXT_NUM" "$FEATURE_NAME")
+
+echo "FEATURE_NAME=$FEATURE_NAME"
+echo "FEATURE_DIR=$FEATURE_DIR"
+
+# Create feature directory
+mkdir -p "$FEATURE_DIR"
+
+# Copy original plan
+cp "$PLAN_FILE" "$FEATURE_DIR/original-plan.md"
+
+echo "✓ Initialized: $FEATURE_DIR"
+```
+
+**CRITICAL**: After running this bash command, you MUST extract and remember:
+- `FEATURE_NAME` — used in all subsequent phases
+- `FEATURE_DIR` — the full path like `specs/011-my-feature`
+
+**Step 1.2: Initialize state file**
+
+Create `.workflow-state.json` in the feature directory:
+
+```json
+{
+  "version": 1,
+  "feature": "{FEATURE_NAME}",
+  "featureDir": "{FEATURE_DIR}",
+  "planFile": "{absolute path to original plan}",
+  "phase": "initialize",
+  "status": "in_progress",
+  "iterations": {},
+  "timestamps": {
+    "started": "{ISO timestamp}"
+  }
+}
+```
+
+**Step 1.3: Resume mode** (if `--resume` was passed)
+
+```bash
+# Find most recent feature directory with in-progress state
+STATE_FILE=$(find specs -name ".workflow-state.json" -exec grep -l '"status": "in_progress"' {} \; | head -1)
+if [ -z "$STATE_FILE" ]; then
+    echo "ERROR: No in-progress workflow found"
+    exit 1
+fi
+
+FEATURE_DIR=$(dirname "$STATE_FILE")
+echo "Resuming from: $FEATURE_DIR"
+cat "$STATE_FILE"
+```
+
+</execution>
 
 ### Phase 2: Spike (Assumption Validation)
 
@@ -699,86 +752,88 @@ IF bash exit code is non-zero AND retries >= 3:
 
 </execution>
 
-### Phase 6: Analyze Loop
+### Phase 6: Analyze
 
-### Phase 5: Analyze Loop
+<execution>
 
-```
-iterations.analyze = 0
-WHILE iterations.analyze < limits.analyze:
-    1. Update state: phase: "analyze", increment iterations.analyze
-    2. Execute /autopilot.analyze
-    3. Parse analysis report for issues
-    4. Persist analysis-report.md (versioned: analysis-report-v{N}.md)
-
-    IF no CRITICAL or HIGH issues:
-        BREAK → proceed to Phase 6
-
-    IF CRITICAL issues found:
-        5. Display issues to user
-        6. For each issue, attempt automated fix OR prompt user
-        7. Re-run affected phases (specify/plan/tasks) as needed
-        8. Continue loop
-
-IF iterations.analyze >= limits.analyze AND issues remain:
-    HALT with error: "Analyze loop exceeded {limit} iterations. {N} issues remain."
-    Display issues and suggest manual intervention
-    Save state for resume
-    EXIT
-```
-
-### Phase 6: Clarify Review
-
-1. Update state: `phase: "clarify"`
-2. Load original plan file (from `state.planFile`)
-3. Compare all autopilot artifacts against original plan intent:
-   - spec.md captures all requirements from plan?
-   - plan.md architecture aligns with plan constraints?
-   - tasks.md covers all functionality?
-4. Execute `/autopilot.clarify` if gaps found
-5. Track if any changes made to spec.md
+**Step 6.1: Invoke autopilot:analyze**
 
 ```
-IF changes made to spec.md:
-    INCREMENT iterations.clarify
-    IF iterations.clarify < limits.clarify:
-        GOTO Phase 5 (re-analyze)
-    ELSE:
-        WARN "Clarify loop limit reached, proceeding with current state"
+Skill(
+  skill: "autopilot:analyze"
+)
 ```
 
-### Phase 8: Implement (Team Spawn)
+**Step 6.2: Check for critical issues**
 
-**PREREQUISITE CHECK** — Verify all required artifacts exist before implementation:
+Parse the analysis output. If CRITICAL or HIGH issues found, attempt auto-fix up to 3 times.
+
+```
+IF no CRITICAL/HIGH issues:
+  → PROCEED to Phase 7
+
+IF issues found AND iterations.analyze < 3:
+  → Auto-fix issues
+  → Re-run affected phases (specify/plan/tasks)
+  → Increment iterations.analyze
+  → Retry Phase 6
+
+IF iterations.analyze >= 3:
+  → HALT: "Analysis found unresolvable issues"
+```
+
+</execution>
+
+### Phase 7: Implement (Team Spawn)
+
+<phase_rules>
+- FEATURE_DIR must be set from Phase 1 (stored in .workflow-state.json)
+- All artifacts (spec.md, plan.md, tasks.md) must exist
+- Phase is NOT complete until all tasks are implemented
+</phase_rules>
+
+<execution>
+
+**Step 7.1: Load FEATURE_DIR from state**
 
 ```bash
-FEATURE_DIR="specs/${FEATURE_NAME}"
-
-# Check ALL required artifacts exist
-REQUIRED_FILES=("spec.md" "plan.md" "tasks.md")
-MISSING=""
-
-for file in "${REQUIRED_FILES[@]}"; do
-    if [ ! -f "$FEATURE_DIR/$file" ]; then
-        MISSING="$MISSING $file"
-    fi
-done
-
-if [ -n "$MISSING" ]; then
-    echo "ERROR: Cannot start implementation. Missing artifacts:$MISSING"
-    echo "Re-run the failed phases or use --resume to continue from last phase."
+# Get FEATURE_DIR from state file (set in Phase 1)
+STATE_FILE=$(find specs -name ".workflow-state.json" -exec grep -l '"status": "in_progress"' {} \; 2>/dev/null | head -1)
+if [ -z "$STATE_FILE" ]; then
+    echo "FAIL: No active workflow state found"
     exit 1
 fi
+
+FEATURE_DIR=$(dirname "$STATE_FILE")
+echo "FEATURE_DIR=$FEATURE_DIR"
+```
+
+**Step 7.2: PREREQUISITE CHECK**
+
+```bash
+# FEATURE_DIR should be set from Step 7.1
+echo "=== PRE-IMPLEMENTATION CHECK ==="
+
+# Check ALL required artifacts exist
+for file in spec.md plan.md tasks.md; do
+    if [ ! -f "$FEATURE_DIR/$file" ]; then
+        echo "FAIL: Missing $FEATURE_DIR/$file"
+        exit 1
+    fi
+done
 
 # Validate tasks.md has actual tasks
 TASK_COUNT=$(grep -cE '^\s*-\s*\[\s*[X ]\s*\]\s*T[0-9]{3}' "$FEATURE_DIR/tasks.md" || echo "0")
 if [ "$TASK_COUNT" -lt 1 ]; then
-    echo "ERROR: tasks.md exists but has no valid tasks."
+    echo "FAIL: tasks.md has no valid tasks"
     exit 1
 fi
 
-echo "✓ Pre-implementation check passed. Found $TASK_COUNT tasks."
+echo "PASS: Found $TASK_COUNT tasks to implement"
+echo "TASK_COUNT=$TASK_COUNT"
 ```
+
+</execution>
 
 1. Update state: `phase: "implement"`
 2. Parse `tasks.md` to extract all tasks
@@ -1286,53 +1341,78 @@ IF only HIGH/MEDIUM/LOW:
     Proceed to completion
 ```
 
-### Phase 11: Completion
+### Phase 10: Completion
 
-**FINAL VALIDATION GATE** — Verify ALL required artifacts exist before declaring success:
+<phase_rules>
+- This phase CANNOT be marked complete unless ALL validations pass
+- Workflow MUST halt if any artifact is missing or invalid
+</phase_rules>
+
+<execution>
+
+**Step 10.1: FINAL VALIDATION GATE**
+
+This is the last line of defense. Run this bash and HALT if exit code is non-zero:
 
 ```bash
-FEATURE_DIR="specs/${FEATURE_NAME}"
+echo "=== FINAL VALIDATION GATE ==="
 
-echo "Running final artifact validation..."
+# Load FEATURE_DIR from state
+STATE_FILE=$(find specs -name ".workflow-state.json" 2>/dev/null | head -1)
+if [ -z "$STATE_FILE" ]; then
+    echo "FAIL: No workflow state found"
+    exit 1
+fi
+FEATURE_DIR=$(dirname "$STATE_FILE")
+echo "FEATURE_DIR=$FEATURE_DIR"
 
-# Required artifacts
-REQUIRED_FILES=(
-    "original-plan.md"
-    "spec.md"
-    "plan.md"
-    "tasks.md"
-)
-
-MISSING=""
-for file in "${REQUIRED_FILES[@]}"; do
+# Gate 1: All required files exist
+for file in original-plan.md spec.md plan.md tasks.md; do
     if [ ! -f "$FEATURE_DIR/$file" ]; then
-        MISSING="$MISSING $file"
+        echo "FAIL: Missing $FEATURE_DIR/$file"
+        echo "This indicates a phase was skipped. Workflow BROKEN."
+        exit 1
     fi
 done
 
-if [ -n "$MISSING" ]; then
-    echo "ERROR: CANNOT mark as complete. Missing artifacts:$MISSING"
-    echo "This indicates phases were skipped. Workflow is BROKEN."
+# Gate 2: spec.md is not template
+if grep -qE '\[FEATURE NAME\]|\[Brief Title\]|\{\{FEATURE' "$FEATURE_DIR/spec.md"; then
+    echo "FAIL: spec.md is still a template"
+    head -10 "$FEATURE_DIR/spec.md"
     exit 1
 fi
 
-# Validate spec.md is not template
-if grep -q '\[FEATURE NAME\]' "$FEATURE_DIR/spec.md"; then
-    echo "ERROR: spec.md is still the unfilled template!"
-    exit 1
-fi
-
-# Validate tasks.md has tasks
-TASK_COUNT=$(grep -cE '^\s*-\s*\[\s*[X ]\s*\]\s*T[0-9]{3}' "$FEATURE_DIR/tasks.md" || echo "0")
+# Gate 3: tasks.md has valid tasks
+TASK_COUNT=$(grep -cE '^\s*-\s*\[\s*[X ]\s*\]\s*T[0-9]{3}' "$FEATURE_DIR/tasks.md" 2>/dev/null || echo "0")
 if [ "$TASK_COUNT" -lt 1 ]; then
-    echo "ERROR: tasks.md has no valid tasks!"
+    echo "FAIL: tasks.md has no valid tasks"
     exit 1
 fi
 
-# Check completed vs total
-COMPLETED=$(grep -cE '^\s*-\s*\[X\]' "$FEATURE_DIR/tasks.md" || echo "0")
-echo "✓ Final validation passed: $COMPLETED/$TASK_COUNT tasks completed"
+# Gate 4: Check completion ratio
+COMPLETED=$(grep -cE '^\s*-\s*\[X\]' "$FEATURE_DIR/tasks.md" 2>/dev/null || echo "0")
+
+echo "PASS: All artifacts validated"
+echo "Tasks: $COMPLETED/$TASK_COUNT completed"
+exit 0
 ```
+
+**Step 10.2: Handle validation result**
+
+<decision>
+IF bash exit code is 0:
+  → Update .workflow-state.json: {"phase": "complete", "status": "done"}
+  → Print completion summary
+  → WORKFLOW COMPLETE
+
+IF bash exit code is non-zero:
+  → DO NOT mark as complete
+  → Print: "WORKFLOW FAILED: Final validation did not pass"
+  → Print: "Re-run from failed phase or investigate manually"
+  → HALT
+</decision>
+
+</execution>
 
 1. Update state: `phase: "complete"`, `status: "done"` **ONLY after validation passes**
 2. Generate final summary:
