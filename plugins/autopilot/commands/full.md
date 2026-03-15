@@ -525,12 +525,12 @@ FOR each completed agent:
 
    | Task Type | Indicator | Verification Tool | Method |
    |-----------|-----------|-------------------|--------|
-   | UI | `Verify: UI \|` | Playwright MCP | Browser automation |
+   | UI | `Verify: UI \|` | agent-browser skill | Browser automation |
    | API | `Verify: API \|` | fetch/curl | HTTP request |
    | CLI | `Verify: CLI \|` | Bash | Execute command |
    | DB | `Verify: DB \|` | DB client | Query database |
    | Test | `Verify: TEST \|` | vitest/jest | Run test file |
-   | Integration | `Verify: E2E \|` | Playwright MCP | Full flow test |
+   | Integration | `Verify: E2E \|` | agent-browser skill | Full flow test |
 
 4. **Run Verifications in Parallel** (team spawn by type):
 
@@ -541,7 +541,7 @@ FOR each completed agent:
    # ... etc
 
    # Spawn verification agents - one per task type group
-   # UI tasks MUST use Playwright MCP browser tools
+   # UI tasks MUST use agent-browser skill (more token-efficient than Playwright MCP)
 
    FOR each task:
        Agent(
@@ -560,11 +560,11 @@ FOR each completed agent:
                ## Instructions by Type
 
                ### If UI verification:
-               Use Playwright MCP browser tools:
-               1. browser_navigate to the relevant page (localhost or deployed URL)
-               2. browser_snapshot to see current state
-               3. browser_click / browser_fill_form as needed
-               4. browser_snapshot to capture result
+               Use agent-browser skill for browser automation:
+               1. ab navigate <url> - navigate to the page
+               2. ab snapshot - capture current DOM state with semantic refs
+               3. ab click <ref> / ab type <ref> <text> - interact with elements
+               4. ab screenshot - capture visual result
                5. Compare against expected behavior
 
                ### If API verification:
@@ -610,7 +610,7 @@ FOR each completed agent:
                ## Constraints
                - MUST execute real verification (no assumptions)
                - MUST capture evidence (screenshots, outputs, responses)
-               - For UI: Use Playwright MCP tools (browser_navigate, browser_click, etc.)
+               - For UI: Use agent-browser skill (ab navigate, ab click, ab snapshot, etc.)
                - For API: Make actual HTTP requests
                - For CLI: Execute actual commands
                - Report honestly - failed verification is valuable information
