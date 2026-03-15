@@ -2,7 +2,27 @@
 
 Evaluate the autopilot plugin against the [FeatureBench](https://github.com/LiberCoders/FeatureBench) benchmark for end-to-end feature development.
 
-## Quick Start
+## Quick Start (Local - Recommended)
+
+Run with your locally installed Claude Code (no Docker):
+
+```bash
+# Run lite split (30 tasks)
+./scripts/featurebench-local.sh
+
+# Run full split (200 tasks)
+./scripts/featurebench-local.sh --full
+
+# Run single task
+./scripts/featurebench-local.sh --task <instance_id>
+
+# Compare with baseline Claude Code
+./scripts/featurebench-local.sh --baseline
+```
+
+Results saved to `test/featurebench-results/`.
+
+## Docker-based (Official FeatureBench)
 
 ### 1. Install FeatureBench
 
