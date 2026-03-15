@@ -1,0 +1,14 @@
+{
+  "name": "autopilot-marketplace",
+  "description": "Autopilot plugin for fully autonomous feature implementation",
+  "owner": {
+    "name": "timothywangdev",
+    "url": "https://github.com/timothywangdev"
+  },
+  "plugins": [
+    {
+      "name": "autopilot",
+      "source": "."
+    }
+  ]
+}
