@@ -8,7 +8,16 @@
   "plugins": [
     {
       "name": "autopilot",
-      "source": "."
+      "version": "1.0.0",
+      "source": "./plugins/autopilot",
+      "description": "Fully autonomous feature implementation: plan -> spec -> tasks -> implement -> review -> ship",
+      "author": {
+        "name": "timothywangdev"
+      },
+      "repository": "https://github.com/timothywangdev/autopilot",
+      "license": "MIT",
+      "keywords": ["automation", "implementation", "workflow", "specification", "code-review"],
+      "strict": false
     }
   ]
 }
