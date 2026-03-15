@@ -1,0 +1,28 @@
+{
+  "name": "autopilot",
+  "version": "1.0.0",
+  "description": "Fully autonomous feature implementation: plan → spec → tasks → implement → review → ship",
+  "author": "timothywangdev",
+  "license": "MIT",
+  "repository": "https://github.com/timothywangdev/autopilot",
+  "keywords": [
+    "automation",
+    "implementation",
+    "workflow",
+    "specification",
+    "code-review",
+    "team-spawn"
+  ],
+  "commands": [
+    "commands/autopilot.full.md",
+    "commands/autopilot.specify.md",
+    "commands/autopilot.plan.md",
+    "commands/autopilot.tasks.md",
+    "commands/autopilot.analyze.md",
+    "commands/autopilot.clarify.md",
+    "commands/autopilot.implement.md",
+    "commands/autopilot.checklist.md",
+    "commands/autopilot.constitution.md",
+    "commands/autopilot.taskstoissues.md"
+  ]
+}
