@@ -1,5 +1,75 @@
 ---
 description: Perform a non-destructive cross-artifact consistency and quality analysis across spec.md, plan.md, and tasks.md after task generation.
+
+evals:
+  - prompt: "/autopilot:analyze"
+    setup: |
+      cat > spec.md << 'EOF'
+      # Feature
+      ## Requirements
+      - Feature A
+      - Feature B
+      - Feature C
+      EOF
+      cat > plan.md << 'EOF'
+      # Plan
+      - Implement A
+      - Implement B
+      - Implement C
+      EOF
+      cat > tasks.md << 'EOF'
+      # Tasks
+      - [ ] T001: Implement Feature A
+      - [ ] T002: Implement Feature B
+      - [ ] T003: Implement Feature C
+      EOF
+    expect: |
+      - Reports PASS for consistent artifacts
+      - No CRITICAL or HIGH issues
+      - Creates analysis-report.md
+
+  - prompt: "/autopilot:analyze"
+    setup: |
+      cat > spec.md << 'EOF'
+      # Feature
+      ## Requirements
+      - Feature A
+      - Feature B
+      - Feature C
+      EOF
+      cat > tasks.md << 'EOF'
+      # Tasks
+      - [ ] T001: Implement Feature A
+      - [ ] T002: Implement Feature B
+      # Note: Feature C is MISSING!
+      EOF
+    expect: |
+      - Detects missing requirement coverage
+      - Reports Feature C not covered in tasks
+      - Issue severity: HIGH or CRITICAL
+
+  - prompt: "/autopilot:analyze"
+    setup: |
+      cat > spec.md << 'EOF'
+      # Feature
+      ## Requirements
+      - User authentication
+      EOF
+      cat > plan.md << 'EOF'
+      # Plan
+      - Use JWT tokens
+      - Use session cookies
+      EOF
+    expect: |
+      - Detects ambiguity: conflicting auth approaches
+      - Reports potential inconsistency
+      - Suggests clarification needed
+
+  - prompt: "/autopilot:analyze"
+    expect: |
+      - Shows error: artifacts not found
+      - Lists which files are missing
+      - Suggests running earlier commands
 ---
 
 ## User Input

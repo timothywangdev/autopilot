@@ -1,0 +1,603 @@
+# Autopilot Plugin Evaluation Suite
+# Run with: /skill-creator eval autopilot
+# Or: skill-creator benchmark autopilot
+
+version: 1
+plugin: autopilot
+
+# Global test configuration
+config:
+  timeout: 600  # 10 minutes max per eval
+  parallel: true
+  cleanup: true  # Clean up test artifacts after each eval
+  working_dir: /tmp/autopilot-test-{{uuid}}
+
+# Setup script run before each eval
+setup: |
+  mkdir -p {{working_dir}}
+  cd {{working_dir}}
+  git init
+  echo '{"name": "test-project", "version": "1.0.0"}' > package.json
+  echo '{}' > tsconfig.json
+
+# Teardown script run after each eval
+teardown: |
+  rm -rf {{working_dir}}
+
+# ============================================================================
+# INIT COMMAND EVALS
+# ============================================================================
+
+evals:
+  # --- Init Command ---
+
+  - name: "init creates directory structure"
+    skill: "autopilot:init"
+    prompt: "/autopilot:init"
+    expect:
+      files_exist:
+        - ".specify/memory/constitution.md"
+        - ".specify/templates/spec-template.md"
+        - ".specify/templates/plan-template.md"
+        - ".specify/templates/tasks-template.md"
+        - "specs/"
+      output_contains:
+        - "initialized"
+        - "Next steps"
+    severity: critical
+
+  - name: "init is idempotent"
+    skill: "autopilot:init"
+    setup: |
+      mkdir -p .specify/templates
+      echo "existing" > .specify/templates/spec-template.md
+    prompt: "/autopilot:init"
+    expect:
+      output_contains:
+        - "already exists"
+      files_unchanged:
+        - ".specify/templates/spec-template.md"
+    severity: high
+
+  # --- Full Command - Basic Flow ---
+
+  - name: "full with simple plan creates all artifacts"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full test/fixtures/simple-plan.md"
+    timeout: 300
+    expect:
+      files_exist:
+        - "specs/*/spec.md"
+        - "specs/*/plan.md"
+        - "specs/*/tasks.md"
+        - "specs/*/.workflow-state.json"
+      output_contains:
+        - "spec.md"
+        - "plan.md"
+        - "tasks.md"
+      workflow_state:
+        status: ["in_progress", "done"]
+    severity: critical
+
+  - name: "full creates workflow state with correct schema"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full test/fixtures/simple-plan.md"
+    expect:
+      json_file: "specs/*/.workflow-state.json"
+      json_schema:
+        required:
+          - version
+          - feature
+          - phase
+          - status
+          - iterations
+          - limits
+          - timestamps
+        properties:
+          version:
+            type: number
+            minimum: 1
+          iterations:
+            type: object
+            required: [spike, analyze, clarify, verify, review]
+    severity: critical
+
+  # --- Full Command - Error Handling ---
+
+  - name: "full with missing file shows error"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full nonexistent-file.md"
+    expect:
+      output_contains:
+        - "not found"
+        - "error"
+      exit_gracefully: true
+    severity: high
+
+  - name: "full with empty arguments shows usage"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full"
+    expect:
+      output_contains:
+        - "Usage"
+        - "plan-file"
+        - "--resume"
+    severity: high
+
+  - name: "full with invalid file shows error"
+    skill: "autopilot:full"
+    setup: |
+      echo "" > empty-plan.md
+    prompt: "/autopilot:full empty-plan.md"
+    expect:
+      output_contains:
+        - "empty"
+        - "invalid"
+    severity: medium
+
+  # --- Resume Functionality ---
+
+  - name: "full --resume continues from saved state"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/test-feature
+      cat > specs/test-feature/.workflow-state.json << 'EOF'
+      {
+        "version": 1,
+        "feature": "test-feature",
+        "phase": "tasks",
+        "status": "in_progress",
+        "iterations": {"spike": 1, "analyze": 0, "clarify": 0, "verify": 0, "review": 0},
+        "limits": {"analyze": 5, "clarify": 3, "implementTaskRetry": 3, "verify": 3, "review": 5},
+        "timestamps": {"started": "2026-03-15T10:00:00Z"}
+      }
+      EOF
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/test-feature"
+    expect:
+      output_contains:
+        - "Resuming"
+        - "tasks"
+      workflow_state:
+        phase: ["tasks", "analyze", "implement"]
+    severity: critical
+
+  - name: "full --resume with no state shows error"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full --resume"
+    expect:
+      output_contains:
+        - "No workflow state"
+        - "error"
+    severity: high
+
+  - name: "full --resume with corrupted state handles gracefully"
+    skill: "autopilot:full"
+    setup: |
+      mkdir -p specs/test-feature
+      echo "not json" > specs/test-feature/.workflow-state.json
+    prompt: "/autopilot:full --resume"
+    cwd: "specs/test-feature"
+    expect:
+      output_contains:
+        - "corrupted"
+        - "error"
+      exit_gracefully: true
+    severity: high
+
+  # --- Spike Phase ---
+
+  - name: "full extracts risky assumptions for spike"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full test/fixtures/risky-assumptions-plan.md"
+    timeout: 300
+    expect:
+      files_exist:
+        - "specs/*/spike-report.md"
+        - "specs/*/original-plan.md"
+      output_contains:
+        - "spike"
+        - "assumption"
+    severity: high
+
+  - name: "spike with no risky assumptions auto-continues"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full test/fixtures/simple-plan.md"
+    expect:
+      output_not_contains:
+        - "CHECKPOINT"
+        - "BLOCKER"
+      workflow_state:
+        phase: ["specify", "plan", "tasks", "implement"]
+    severity: medium
+
+  # --- Specify Command ---
+
+  - name: "specify creates spec.md from description"
+    skill: "autopilot:specify"
+    prompt: "/autopilot:specify Add a user profile page with avatar upload"
+    expect:
+      files_exist:
+        - "spec.md"
+      file_contains:
+        file: "spec.md"
+        content:
+          - "user profile"
+          - "avatar"
+          - "Requirements"
+    severity: critical
+
+  - name: "specify includes acceptance criteria"
+    skill: "autopilot:specify"
+    prompt: "/autopilot:specify Add dark mode toggle to settings"
+    expect:
+      file_contains:
+        file: "spec.md"
+        content:
+          - "Acceptance Criteria"
+    severity: high
+
+  # --- Plan Command ---
+
+  - name: "plan creates technical plan from spec"
+    skill: "autopilot:plan"
+    setup: |
+      cat > spec.md << 'EOF'
+      # Feature: API Rate Limiting
+      ## Requirements
+      - Limit API requests to 100/minute per user
+      - Return 429 when exceeded
+      ## Acceptance Criteria
+      - Rate limit headers in response
+      EOF
+    prompt: "/autopilot:plan"
+    expect:
+      files_exist:
+        - "plan.md"
+      file_contains:
+        file: "plan.md"
+        content:
+          - "Architecture"
+          - "Implementation"
+    severity: critical
+
+  - name: "plan creates data-model.md when needed"
+    skill: "autopilot:plan"
+    setup: |
+      cat > spec.md << 'EOF'
+      # Feature: User Comments
+      ## Requirements
+      - Users can post comments
+      - Comments have author, content, timestamp
+      - Comments can be nested (replies)
+      EOF
+    prompt: "/autopilot:plan"
+    expect:
+      files_exist:
+        - "plan.md"
+        - "data-model.md"
+    severity: medium
+
+  # --- Tasks Command ---
+
+  - name: "tasks generates ordered task list"
+    skill: "autopilot:tasks"
+    setup: |
+      cat > plan.md << 'EOF'
+      # Implementation Plan
+      ## Phase 1: Setup
+      - Create database schema
+      - Set up migrations
+      ## Phase 2: API
+      - Create endpoints
+      - Add validation
+      EOF
+    prompt: "/autopilot:tasks"
+    expect:
+      files_exist:
+        - "tasks.md"
+      file_contains:
+        file: "tasks.md"
+        content:
+          - "[ ]"
+          - "Phase"
+    severity: critical
+
+  - name: "tasks includes verification criteria"
+    skill: "autopilot:tasks"
+    setup: |
+      cat > plan.md << 'EOF'
+      # Plan
+      ## Phase 1
+      - Add login endpoint
+      - Add logout endpoint
+      EOF
+    prompt: "/autopilot:tasks"
+    expect:
+      file_contains:
+        file: "tasks.md"
+        content:
+          - "Verify:"
+    severity: high
+
+  - name: "tasks marks parallelizable tasks with [P]"
+    skill: "autopilot:tasks"
+    setup: |
+      cat > plan.md << 'EOF'
+      # Plan
+      ## Phase 1: Independent Tasks
+      - Create user model (independent)
+      - Create post model (independent)
+      - Create comment model (independent)
+      EOF
+    prompt: "/autopilot:tasks"
+    expect:
+      file_contains:
+        file: "tasks.md"
+        content:
+          - "[P]"
+    severity: medium
+
+  # --- Analyze Command ---
+
+  - name: "analyze detects missing requirements"
+    skill: "autopilot:analyze"
+    setup: |
+      cat > spec.md << 'EOF'
+      # Feature
+      ## Requirements
+      - Feature A
+      - Feature B
+      - Feature C
+      EOF
+      cat > tasks.md << 'EOF'
+      # Tasks
+      - [ ] T001: Implement Feature A
+      - [ ] T002: Implement Feature B
+      # Note: Feature C is missing!
+      EOF
+    prompt: "/autopilot:analyze"
+    expect:
+      output_contains:
+        - "missing"
+        - "Feature C"
+      exit_code: 1
+    severity: high
+
+  - name: "analyze passes with consistent artifacts"
+    skill: "autopilot:analyze"
+    setup: |
+      cat > spec.md << 'EOF'
+      # Feature
+      ## Requirements
+      - Feature A
+      EOF
+      cat > plan.md << 'EOF'
+      # Plan
+      - Implement Feature A
+      EOF
+      cat > tasks.md << 'EOF'
+      # Tasks
+      - [ ] T001: Implement Feature A
+      EOF
+    prompt: "/autopilot:analyze"
+    expect:
+      output_contains:
+        - "pass"
+        - "consistent"
+    severity: high
+
+  # --- Verification Phase ---
+
+  - name: "verify runs existing test suite"
+    skill: "autopilot:full"
+    setup: |
+      cat > package.json << 'EOF'
+      {"scripts": {"test": "echo 'tests passed'"}}
+      EOF
+    prompt: "/autopilot:full test/fixtures/simple-plan.md"
+    expect:
+      output_contains:
+        - "tests passed"
+        - "Unit/integration tests"
+    severity: critical
+
+  - name: "verify halts on failing tests"
+    skill: "autopilot:full"
+    setup: |
+      cat > package.json << 'EOF'
+      {"scripts": {"test": "exit 1"}}
+      EOF
+    prompt: "/autopilot:full test/fixtures/simple-plan.md"
+    expect:
+      output_contains:
+        - "tests failed"
+        - "HALT"
+      workflow_state:
+        status: "failed"
+    severity: critical
+
+  - name: "verify runs type check for TypeScript"
+    skill: "autopilot:full"
+    setup: |
+      cat > tsconfig.json << 'EOF'
+      {"compilerOptions": {"strict": true}}
+      EOF
+    prompt: "/autopilot:full test/fixtures/simple-plan.md"
+    expect:
+      output_contains:
+        - "Type check"
+    severity: high
+
+  # --- Review Phase ---
+
+  - name: "review spawns 5 reviewer agents"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full test/fixtures/simple-plan.md"
+    expect:
+      agents_spawned:
+        min: 5
+        names_contain:
+          - "functional"
+          - "architecture"
+          - "contract"
+          - "quality"
+          - "coverage"
+    severity: high
+
+  - name: "review creates review-report.md"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full test/fixtures/simple-plan.md"
+    expect:
+      files_exist:
+        - "specs/*/review-report.md"
+      file_contains:
+        file: "specs/*/review-report.md"
+        content:
+          - "Summary"
+          - "PASS"
+    severity: high
+
+  # --- State Persistence ---
+
+  - name: "state updated after each phase"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full test/fixtures/simple-plan.md"
+    expect:
+      json_file: "specs/*/.workflow-state.json"
+      json_values:
+        timestamps.lastUpdated:
+          recent: 60  # Within last 60 seconds
+    severity: medium
+
+  - name: "completed tasks tracked in state"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full test/fixtures/simple-plan.md"
+    timeout: 300
+    expect:
+      json_file: "specs/*/.workflow-state.json"
+      json_values:
+        completedTasks:
+          type: array
+          min_length: 1
+    severity: medium
+
+  # --- Iteration Limits ---
+
+  - name: "analyze loop respects iteration limit"
+    skill: "autopilot:full"
+    setup: |
+      # Create artifacts that will always fail analyze
+      cat > spec.md << 'EOF'
+      # Feature with impossible requirement
+      ## Requirements
+      - Do the impossible thing
+      EOF
+    prompt: "/autopilot:full spec.md"
+    expect:
+      output_contains:
+        - "limit"
+        - "exceeded"
+      workflow_state:
+        iterations.analyze:
+          max: 5
+    severity: high
+
+  # --- Watchdog / Self-Monitoring ---
+
+  - name: "heartbeat updated during execution"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full test/fixtures/simple-plan.md"
+    expect:
+      json_file: "specs/*/.workflow-state.json"
+      json_values:
+        timestamps.lastUpdated:
+          recent: 300  # Within last 5 minutes
+    severity: medium
+
+  # --- Edge Cases ---
+
+  - name: "handles special characters in plan filename"
+    skill: "autopilot:full"
+    setup: |
+      cp test/fixtures/simple-plan.md "my plan (v2).md"
+    prompt: "/autopilot:full \"my plan (v2).md\""
+    expect:
+      exit_gracefully: true
+    severity: low
+
+  - name: "handles very long plan file"
+    skill: "autopilot:full"
+    setup: |
+      # Create a plan with 100 requirements
+      echo "# Long Plan" > long-plan.md
+      echo "## Requirements" >> long-plan.md
+      for i in $(seq 1 100); do
+        echo "- Requirement $i" >> long-plan.md
+      done
+    prompt: "/autopilot:full long-plan.md"
+    timeout: 600
+    expect:
+      exit_gracefully: true
+    severity: low
+
+  - name: "handles unicode in plan content"
+    skill: "autopilot:full"
+    setup: |
+      cat > unicode-plan.md << 'EOF'
+      # Feature: Internationalization
+      ## Requirements
+      - Support Japanese: 日本語
+      - Support Chinese: 中文
+      - Support emoji: 🚀 🎉 ✨
+      EOF
+    prompt: "/autopilot:full unicode-plan.md"
+    expect:
+      exit_gracefully: true
+    severity: low
+
+# ============================================================================
+# BENCHMARKS
+# ============================================================================
+
+benchmarks:
+  - name: "simple-feature-e2e"
+    description: "End-to-end simple feature implementation"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full test/fixtures/simple-plan.md"
+    metrics:
+      - elapsed_time
+      - token_usage
+      - agents_spawned
+      - iterations_total
+    baseline:
+      elapsed_time_max: 300  # 5 minutes
+      token_usage_max: 100000
+      agents_spawned_max: 20
+
+  - name: "complex-feature-e2e"
+    description: "End-to-end complex feature implementation"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full test/fixtures/complex-plan.md"
+    timeout: 900
+    metrics:
+      - elapsed_time
+      - token_usage
+      - agents_spawned
+      - iterations_total
+      - tasks_completed
+    baseline:
+      elapsed_time_max: 600  # 10 minutes
+      token_usage_max: 500000
+      agents_spawned_max: 50
+
+  - name: "spike-with-invalid-assumptions"
+    description: "Spike phase with assumptions that will fail"
+    skill: "autopilot:full"
+    prompt: "/autopilot:full test/fixtures/risky-assumptions-plan.md"
+    metrics:
+      - spike_duration
+      - assumptions_tested
+      - deviations_found
+    baseline:
+      spike_duration_max: 180  # 3 minutes

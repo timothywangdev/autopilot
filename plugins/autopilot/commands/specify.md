@@ -1,6 +1,6 @@
 ---
 description: Create or update the feature specification from a natural language feature description.
-handoffs: 
+handoffs:
   - label: Build Technical Plan
     agent: autopilot.plan
     prompt: Create a plan for the spec. I am building with...
@@ -8,6 +8,34 @@ handoffs:
     agent: autopilot.clarify
     prompt: Clarify specification requirements
     send: true
+
+evals:
+  - prompt: "/autopilot:specify Add a user profile page with avatar upload"
+    expect: |
+      - Creates spec.md file
+      - Includes "user profile" in requirements
+      - Includes "avatar upload" in requirements
+      - Has Acceptance Criteria section
+      - Has Requirements section
+
+  - prompt: "/autopilot:specify Implement OAuth2 login with Google and GitHub"
+    expect: |
+      - Creates spec.md with OAuth2 requirements
+      - Mentions Google OAuth
+      - Mentions GitHub OAuth
+      - Includes security considerations
+
+  - prompt: "/autopilot:specify"
+    expect: |
+      - Asks for feature description
+      - Does NOT create empty spec.md
+      - Shows helpful prompt for input
+
+  - prompt: "/autopilot:specify Add dark mode toggle"
+    expect: |
+      - Creates concise spec (not over-engineered)
+      - Focus on core requirement: dark mode toggle
+      - Has testable acceptance criteria
 ---
 
 ## User Input

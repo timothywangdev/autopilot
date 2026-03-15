@@ -1,5 +1,80 @@
 ---
 description: End-to-end feature implementation orchestrator. Takes a plan file and drives through spike (assumption validation) → specify → plan → tasks → analyze → implement → verify (prove tasks work) → review with automated iteration loops, human checkpoints for significant deviations, and team spawning.
+
+# Evaluation test cases for skill-creator
+evals:
+  # Critical path tests
+  - prompt: "/autopilot:full test/fixtures/simple-plan.md"
+    expect: |
+      - Creates spec.md with requirements from plan
+      - Creates plan.md with technical architecture
+      - Creates tasks.md with ordered task list
+      - Creates .workflow-state.json with correct schema
+      - All phases execute: spike → specify → plan → tasks → analyze → implement → verify → review
+      - Final status is "done" or workflow state shows progress
+
+  - prompt: "/autopilot:full --resume"
+    expect: |
+      - Reads existing .workflow-state.json
+      - Continues from saved phase (not restart)
+      - Preserves completed work
+      - Updates timestamps on resume
+
+  # Error handling tests
+  - prompt: "/autopilot:full nonexistent-file.md"
+    expect: |
+      - Returns error about file not found
+      - Does NOT crash or hang
+      - Suggests correct usage
+
+  - prompt: "/autopilot:full"
+    expect: |
+      - Shows usage instructions
+      - Mentions <plan-file> argument
+      - Mentions --resume option
+
+  # Spike phase tests
+  - prompt: "/autopilot:full test/fixtures/risky-assumptions-plan.md"
+    expect: |
+      - Extracts risky assumptions from plan
+      - Creates spike experiments
+      - Runs spikes in parallel (team spawn)
+      - Creates spike-report.md
+      - Checkpoints if significant deviation found
+
+  # Verification tests
+  - prompt: "/autopilot:full test/fixtures/simple-plan.md"
+    expect: |
+      - Runs existing test suite (yarn test or npm test)
+      - Runs E2E tests if playwright/cypress configured
+      - Runs TypeScript type check
+      - Halts if tests fail after retry limit
+      - Creates verification-report.md
+
+  # Review tests
+  - prompt: "/autopilot:full test/fixtures/simple-plan.md"
+    expect: |
+      - Spawns 5 reviewer agents in parallel
+      - Reviews: functional, architecture, contract, quality, coverage
+      - Creates review-report.md
+      - Auto-fixes critical issues
+      - Halts if critical issues remain after limit
+
+  # State persistence tests
+  - prompt: "/autopilot:full test/fixtures/simple-plan.md"
+    expect: |
+      - Updates .workflow-state.json after each phase
+      - Tracks iterations count
+      - Records completed tasks
+      - Stores timestamps (started, lastUpdated, phaseStarted)
+
+  # Watchdog tests
+  - prompt: "/autopilot:full test/fixtures/complex-plan.md"
+    expect: |
+      - Spawns background watchdog agent
+      - Watchdog monitors heartbeat
+      - Heartbeat updated every phase
+      - Recovery triggered if stale > 5 minutes
 ---
 
 ## User Input

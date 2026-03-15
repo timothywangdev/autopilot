@@ -1,6 +1,6 @@
 ---
 description: Generate an actionable, dependency-ordered tasks.md for the feature based on available design artifacts.
-handoffs: 
+handoffs:
   - label: Analyze For Consistency
     agent: autopilot.analyze
     prompt: Run a project analysis for consistency
@@ -9,6 +9,54 @@ handoffs:
     agent: autopilot.implement
     prompt: Start the implementation in phases
     send: true
+
+evals:
+  - prompt: "/autopilot:tasks"
+    setup: |
+      cat > plan.md << 'EOF'
+      # Implementation Plan
+      ## Phase 1: Database Setup
+      - Create user schema
+      - Create migrations
+      ## Phase 2: API Layer
+      - Create CRUD endpoints
+      - Add validation
+      EOF
+    expect: |
+      - Creates tasks.md with checkbox format [ ]
+      - Tasks are ordered by dependency
+      - Each task has unique ID (T001, T002, etc.)
+      - Tasks reference plan.md phases
+
+  - prompt: "/autopilot:tasks"
+    setup: |
+      cat > plan.md << 'EOF'
+      # Plan
+      ## Phase 1: Independent Tasks
+      - Create user model
+      - Create post model
+      - Create comment model
+      EOF
+    expect: |
+      - Marks independent tasks with [P] for parallel
+      - Tasks with no dependencies can run simultaneously
+
+  - prompt: "/autopilot:tasks"
+    setup: |
+      cat > plan.md << 'EOF'
+      # Plan
+      - Add login button
+      - Create login endpoint
+      EOF
+    expect: |
+      - Each task has Verify: line
+      - Verification includes type (UI, API, CLI, DB, TEST)
+      - Verification includes expected outcome
+
+  - prompt: "/autopilot:tasks"
+    expect: |
+      - Shows error: plan.md not found
+      - Suggests running /autopilot:plan first
 ---
 
 ## User Input

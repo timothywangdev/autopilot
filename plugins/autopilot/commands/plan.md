@@ -1,6 +1,6 @@
 ---
 description: Execute the implementation planning workflow using the plan template to generate design artifacts.
-handoffs: 
+handoffs:
   - label: Create Tasks
     agent: autopilot.tasks
     prompt: Break the plan into tasks
@@ -8,6 +8,40 @@ handoffs:
   - label: Create Checklist
     agent: autopilot.checklist
     prompt: Create a checklist for the following domain...
+
+evals:
+  - prompt: "/autopilot:plan"
+    setup: |
+      cat > spec.md << 'EOF'
+      # Feature: User Comments
+      ## Requirements
+      - Users can post comments on articles
+      - Comments have author, content, timestamp
+      - Comments can be nested (replies)
+      EOF
+    expect: |
+      - Creates plan.md with architecture details
+      - Includes implementation phases
+      - References spec.md requirements
+
+  - prompt: "/autopilot:plan"
+    setup: |
+      cat > spec.md << 'EOF'
+      # Feature: Payment Integration
+      ## Requirements
+      - Stripe integration for payments
+      - Store payment history
+      - Handle refunds
+      EOF
+    expect: |
+      - Creates plan.md
+      - Creates data-model.md (payment schema needed)
+      - Considers security for payment data
+
+  - prompt: "/autopilot:plan"
+    expect: |
+      - Shows error: spec.md not found
+      - Suggests running /autopilot:specify first
 ---
 
 ## User Input

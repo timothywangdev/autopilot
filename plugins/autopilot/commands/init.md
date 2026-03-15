@@ -1,5 +1,28 @@
 ---
 description: Initialize autopilot in current project. Creates .specify/ directory with templates and constitution.
+
+evals:
+  - prompt: "/autopilot:init"
+    expect: |
+      - Creates .specify/ directory
+      - Creates .specify/memory/constitution.md
+      - Creates .specify/templates/ with all template files
+      - Creates specs/ directory
+      - Shows success message with next steps
+
+  - prompt: "/autopilot:init"
+    setup: "mkdir -p .specify/templates && echo 'existing' > .specify/templates/spec-template.md"
+    expect: |
+      - Detects existing .specify/ directory
+      - Asks user about overwrite vs skip
+      - Does NOT overwrite without confirmation
+
+  - prompt: "/autopilot:init"
+    setup: "mkdir -p .specify && touch .specify/memory/constitution.md"
+    expect: |
+      - Handles partial initialization gracefully
+      - Creates missing files only
+      - Reports what was created vs skipped
 ---
 
 ## Initialization
