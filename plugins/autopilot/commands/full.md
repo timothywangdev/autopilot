@@ -605,10 +605,94 @@ FOR each completed agent:
    └── T003-query-result.txt
    ```
 
-7. **Verification Gate**:
+7. **Run Existing Test Suites** (regression check):
 
    ```
+   # CRITICAL: Ensure we haven't broken existing functionality
+
+   # Step 1: Run unit/integration tests
+   test_result = Bash("yarn test" or "npm test" or project's test command)
+
+   IF test_result.exit_code != 0:
+       Log: "✗ Existing tests failed"
+       Parse failed tests from output
+       FOR each failed test:
+           Add to verification-report.md as REGRESSION
+
+       # Attempt to fix regressions
+       INCREMENT iterations.verify
+       IF iterations.verify < limits.verify:
+           Spawn fix agents for each regression
+           Re-run tests
+       ELSE:
+           HALT: "Regression tests failed after {limit} attempts"
+           EXIT
+
+   Log: "✓ Unit/integration tests passed"
+
+   # Step 2: Run E2E tests (if they exist)
+   IF project has E2E tests (playwright.config.ts, cypress.config.ts, etc.):
+       e2e_result = Bash("yarn test:e2e" or "npx playwright test" or project's E2E command)
+
+       IF e2e_result.exit_code != 0:
+           Log: "✗ E2E tests failed"
+           Parse failed E2E tests
+           FOR each failed test:
+               Add to verification-report.md as E2E_REGRESSION
+
+           INCREMENT iterations.verify
+           IF iterations.verify < limits.verify:
+               Spawn fix agents for E2E failures
+               Re-run E2E tests
+           ELSE:
+               HALT: "E2E tests failed after {limit} attempts"
+               EXIT
+
+       Log: "✓ E2E tests passed"
+
+   # Step 3: Type checking (if TypeScript)
+   IF project uses TypeScript:
+       type_result = Bash("yarn tsc --noEmit" or "npx tsc --noEmit")
+
+       IF type_result.exit_code != 0:
+           Log: "✗ Type errors found"
+           Add type errors to verification-report.md
+           # Type errors are blockers
+           HALT: "TypeScript compilation failed"
+           EXIT
+
+       Log: "✓ Type check passed"
+
+   # Step 4: Linting (if configured)
+   IF project has linter (eslint, biome, etc.):
+       lint_result = Bash("yarn lint" or project's lint command)
+
+       IF lint_result.exit_code != 0:
+           Log: "⚠ Lint warnings/errors"
+           # Try auto-fix
+           Bash("yarn lint --fix")
+           # Re-check
+           lint_result = Bash("yarn lint")
+           IF lint_result.exit_code != 0:
+               Add lint errors to verification-report.md as warnings
+               # Don't block on lint, but report
+   ```
+
+8. **Verification Gate**:
+
+   ```
+   # All gates must pass:
+   # 1. Task verifications (UI/API/CLI/DB/TEST)
+   # 2. Existing test suite
+   # 3. E2E tests
+   # 4. Type check
+
    verified_ratio = verified_count / total_verifiable_count
+   tests_passed = unit_tests_passed AND e2e_tests_passed AND type_check_passed
+
+   IF NOT tests_passed:
+       HALT: "Existing tests or type check failed"
+       EXIT
 
    IF verified_ratio >= 0.95:
        Log: "Verification passed ({verified_count}/{total_count})"
