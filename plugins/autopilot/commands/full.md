@@ -113,6 +113,49 @@ This is a **meta-orchestrator** that drives the complete autopilot workflow from
 - State persistence for resume after interruption
 - Audit trail via persisted reports
 
+<critical_rules>
+
+## MANDATORY EXECUTION RULES
+
+These rules are NON-NEGOTIABLE. Violations cause workflow failure.
+
+### Rule 1: No Phase Skipping
+You CANNOT mark a phase "complete" without:
+1. Actually invoking the skill (Skill tool call with result)
+2. Running the validation bash command (Bash tool call with exit code 0)
+3. Writing the state update to .workflow-state.json
+
+### Rule 2: Validation-First
+Every phase follows this exact sequence:
+```
+1. Update state → "in_progress"
+2. Invoke skill → Wait for Skill tool result
+3. Run validation bash → Check exit code
+4. IF exit=0: Update state → "complete", proceed
+5. IF exit≠0: Retry (max 3) OR halt
+```
+
+### Rule 3: Proof of Execution
+Claiming a task/phase is complete without tool call evidence is a CRITICAL FAILURE.
+- "I will invoke..." is NOT execution
+- "The skill should..." is NOT execution
+- Only actual Skill/Bash tool calls count
+
+### Rule 4: Halt on Failure
+If validation fails after 3 retries:
+- Do NOT continue to next phase
+- Do NOT claim partial success
+- Update state to "failed" and STOP
+
+### Rule 5: Artifact Requirements
+Before marking workflow complete, ALL these files MUST exist:
+- `specs/{feature}/spec.md` (>2000 bytes, no placeholders)
+- `specs/{feature}/plan.md` (>1000 bytes, has architecture)
+- `specs/{feature}/tasks.md` (has T001+ format tasks)
+- `specs/{feature}/.workflow-state.json` (status: "done")
+
+</critical_rules>
+
 ## Input Modes
 
 Parse `$ARGUMENTS` to determine mode:
@@ -407,133 +450,254 @@ Agent(
 
 ### Phase 3: Specify
 
-**CRITICAL: This phase MUST run. Do NOT skip even if the plan is detailed.**
+<phase_rules>
+- This phase CANNOT be skipped
+- Phase is NOT complete until validation passes
+- Maximum 3 retry attempts
+</phase_rules>
 
-1. Update state: `phase: "specify"`
+<execution>
 
-2. **INVOKE the skill** (do not just describe, actually invoke it):
-   ```
-   Use the Skill tool:
-   skill: "autopilot:specify"
-   args: <content of validated-plan.md OR path to validated-plan.md>
-   ```
+**Step 3.1: Update state**
 
-3. **HARD VALIDATION GATE** — run these bash commands and HALT if they fail:
-   ```bash
-   # Check spec.md exists and is NOT the template
-   SPEC_FILE="specs/${FEATURE_DIR}/spec.md"
-   if [ ! -f "$SPEC_FILE" ]; then
-       echo "ERROR: spec.md not created. /autopilot:specify failed."
-       exit 1
-   fi
+```json
+{"phase": "specify", "status": "in_progress"}
+```
 
-   # Check spec.md is NOT the template (must have actual content, not placeholders)
-   if grep -q '\[FEATURE NAME\]' "$SPEC_FILE" || grep -q '{{FEATURE_NAME}}' "$SPEC_FILE"; then
-       echo "ERROR: spec.md is still the template. Specify phase did not generate content."
-       exit 1
-   fi
+**Step 3.2: Invoke autopilot:specify**
 
-   # Check spec.md has required sections filled in
-   if grep -q '\[Brief Title\]' "$SPEC_FILE" || grep -q '\[DATE\]' "$SPEC_FILE"; then
-       echo "ERROR: spec.md has unfilled placeholders."
-       exit 1
-   fi
+You MUST use the Skill tool with these EXACT parameters:
 
-   # Check minimum content length (template is ~4KB, real spec should be larger)
-   SPEC_SIZE=$(wc -c < "$SPEC_FILE")
-   if [ "$SPEC_SIZE" -lt 2000 ]; then
-       echo "ERROR: spec.md is too small ($SPEC_SIZE bytes). Expected >2000 bytes."
-       exit 1
-   fi
+```
+Skill(
+  skill: "autopilot:specify",
+  args: "<path to validated-plan.md or original-plan.md>"
+)
+```
 
-   echo "✓ spec.md validation passed ($SPEC_SIZE bytes)"
-   ```
+Wait for the skill to complete. Do NOT proceed to Step 3.3 until Skill tool returns.
 
-4. If validation fails: **DO NOT PROCEED**. Re-run `/autopilot:specify` or HALT.
+**Step 3.3: MANDATORY VALIDATION — Execute this bash command block**
 
-5. Update state: mark specify complete ONLY after validation passes
+This is NOT optional. You MUST run this Bash tool call and capture its exit code:
+
+```bash
+FEATURE_DIR="${FEATURE_NAME:-$(basename $(pwd))}"
+SPEC_FILE="specs/${FEATURE_DIR}/spec.md"
+
+echo "=== VALIDATION: spec.md ==="
+
+# Gate 1: File exists
+if [ ! -f "$SPEC_FILE" ]; then
+    echo "FAIL: spec.md does not exist at $SPEC_FILE"
+    echo "ACTION: Re-run autopilot:specify"
+    exit 1
+fi
+
+# Gate 2: Not a template
+if grep -qE '\[FEATURE NAME\]|\{\{FEATURE|\[Brief Title\]|\[DATE\]' "$SPEC_FILE"; then
+    echo "FAIL: spec.md contains template placeholders"
+    head -20 "$SPEC_FILE"
+    echo "ACTION: Re-run autopilot:specify with actual feature description"
+    exit 1
+fi
+
+# Gate 3: Has required sections
+if ! grep -qi "^## User Scenarios\|^## Requirements\|^## Success Criteria" "$SPEC_FILE"; then
+    echo "FAIL: spec.md missing required sections"
+    grep "^##" "$SPEC_FILE" || echo "(no sections found)"
+    echo "ACTION: Re-run autopilot:specify"
+    exit 1
+fi
+
+# Gate 4: Minimum content
+SPEC_SIZE=$(wc -c < "$SPEC_FILE")
+if [ "$SPEC_SIZE" -lt 2000 ]; then
+    echo "FAIL: spec.md too small ($SPEC_SIZE bytes, need >2000)"
+    exit 1
+fi
+
+echo "PASS: spec.md validated ($SPEC_SIZE bytes)"
+exit 0
+```
+
+**Step 3.4: Handle validation result**
+
+<decision>
+IF bash exit code is 0:
+  → Update state: {"phase": "specify", "status": "complete"}
+  → PROCEED to Phase 4
+
+IF bash exit code is non-zero AND retries < 3:
+  → Log the failure output
+  → Increment specify_retries
+  → GOTO Step 3.2 (retry autopilot:specify)
+
+IF bash exit code is non-zero AND retries >= 3:
+  → Update state: {"phase": "specify", "status": "failed"}
+  → HALT workflow
+  → Report: "Specify phase failed after 3 attempts. Manual intervention required."
+</decision>
+
+</execution>
 
 ### Phase 4: Plan
 
-**CRITICAL: This phase MUST run. Do NOT skip.**
+<phase_rules>
+- This phase CANNOT be skipped
+- Phase is NOT complete until validation passes
+- Maximum 3 retry attempts
+</phase_rules>
 
-1. Update state: `phase: "plan"`
+<execution>
 
-2. **INVOKE the skill**:
-   ```
-   Use the Skill tool:
-   skill: "autopilot:plan"
-   ```
+**Step 4.1: Update state**
 
-3. **HARD VALIDATION GATE**:
-   ```bash
-   PLAN_FILE="specs/${FEATURE_DIR}/plan.md"
-   if [ ! -f "$PLAN_FILE" ]; then
-       echo "ERROR: plan.md not created. /autopilot:plan failed."
-       exit 1
-   fi
+```json
+{"phase": "plan", "status": "in_progress"}
+```
 
-   # Check plan.md is not empty/template
-   PLAN_SIZE=$(wc -c < "$PLAN_FILE")
-   if [ "$PLAN_SIZE" -lt 1000 ]; then
-       echo "ERROR: plan.md is too small ($PLAN_SIZE bytes). Expected >1000 bytes."
-       exit 1
-   fi
+**Step 4.2: Invoke autopilot:plan**
 
-   # Check plan.md has architecture content
-   if ! grep -qi "architecture\|component\|module\|data\|api\|interface" "$PLAN_FILE"; then
-       echo "ERROR: plan.md missing architecture content."
-       exit 1
-   fi
+You MUST use the Skill tool:
 
-   echo "✓ plan.md validation passed ($PLAN_SIZE bytes)"
-   ```
+```
+Skill(
+  skill: "autopilot:plan"
+)
+```
 
-4. If validation fails: **DO NOT PROCEED**. Re-run `/autopilot:plan` or HALT.
+Wait for the skill to complete.
 
-5. Update state: mark plan complete ONLY after validation passes
+**Step 4.3: MANDATORY VALIDATION**
+
+```bash
+FEATURE_DIR="${FEATURE_NAME:-$(basename $(pwd))}"
+PLAN_FILE="specs/${FEATURE_DIR}/plan.md"
+
+echo "=== VALIDATION: plan.md ==="
+
+# Gate 1: File exists
+if [ ! -f "$PLAN_FILE" ]; then
+    echo "FAIL: plan.md does not exist at $PLAN_FILE"
+    exit 1
+fi
+
+# Gate 2: Has architecture content
+if ! grep -qiE "architecture|component|module|data model|api|interface|schema" "$PLAN_FILE"; then
+    echo "FAIL: plan.md missing architecture sections"
+    grep "^##" "$PLAN_FILE" || echo "(no sections found)"
+    exit 1
+fi
+
+# Gate 3: Minimum content
+PLAN_SIZE=$(wc -c < "$PLAN_FILE")
+if [ "$PLAN_SIZE" -lt 1000 ]; then
+    echo "FAIL: plan.md too small ($PLAN_SIZE bytes, need >1000)"
+    exit 1
+fi
+
+echo "PASS: plan.md validated ($PLAN_SIZE bytes)"
+exit 0
+```
+
+**Step 4.4: Handle validation result**
+
+<decision>
+IF bash exit code is 0:
+  → Update state: {"phase": "plan", "status": "complete"}
+  → PROCEED to Phase 5
+
+IF bash exit code is non-zero AND retries < 3:
+  → Increment plan_retries
+  → GOTO Step 4.2
+
+IF bash exit code is non-zero AND retries >= 3:
+  → HALT workflow with failure
+</decision>
+
+</execution>
 
 ### Phase 5: Tasks
 
-**CRITICAL: This phase MUST run. Do NOT skip.**
+<phase_rules>
+- This phase CANNOT be skipped
+- Phase is NOT complete until validation passes
+- Maximum 3 retry attempts
+</phase_rules>
 
-1. Update state: `phase: "tasks"`
+<execution>
 
-2. **INVOKE the skill**:
-   ```
-   Use the Skill tool:
-   skill: "autopilot:tasks"
-   ```
+**Step 5.1: Update state**
 
-3. **HARD VALIDATION GATE**:
-   ```bash
-   TASKS_FILE="specs/${FEATURE_DIR}/tasks.md"
-   if [ ! -f "$TASKS_FILE" ]; then
-       echo "ERROR: tasks.md not created. /autopilot:tasks failed."
-       exit 1
-   fi
+```json
+{"phase": "tasks", "status": "in_progress"}
+```
 
-   # Check tasks.md has task format (T001, T002, etc.)
-   TASK_COUNT=$(grep -cE '^\s*-\s*\[\s*[X ]\s*\]\s*T[0-9]{3}' "$TASKS_FILE" || echo "0")
-   if [ "$TASK_COUNT" -lt 1 ]; then
-       echo "ERROR: tasks.md has no valid tasks (expected T001, T002, etc. format)."
-       exit 1
-   fi
+**Step 5.2: Invoke autopilot:tasks**
 
-   # Check tasks.md has phases
-   if ! grep -qi "^##.*phase" "$TASKS_FILE"; then
-       echo "ERROR: tasks.md missing phase organization."
-       exit 1
-   fi
+You MUST use the Skill tool:
 
-   echo "✓ tasks.md validation passed ($TASK_COUNT tasks found)"
-   ```
+```
+Skill(
+  skill: "autopilot:tasks"
+)
+```
 
-4. If validation fails: **DO NOT PROCEED**. Re-run `/autopilot:tasks` or HALT.
+Wait for the skill to complete.
 
-5. Store task count in state: `state.taskCount = $TASK_COUNT`
+**Step 5.3: MANDATORY VALIDATION**
 
-6. Update state: mark tasks complete ONLY after validation passes
+```bash
+FEATURE_DIR="${FEATURE_NAME:-$(basename $(pwd))}"
+TASKS_FILE="specs/${FEATURE_DIR}/tasks.md"
+
+echo "=== VALIDATION: tasks.md ==="
+
+# Gate 1: File exists
+if [ ! -f "$TASKS_FILE" ]; then
+    echo "FAIL: tasks.md does not exist at $TASKS_FILE"
+    exit 1
+fi
+
+# Gate 2: Has valid task IDs (T001, T002, etc.)
+TASK_COUNT=$(grep -cE '^\s*-\s*\[\s*[X ]\s*\]\s*T[0-9]{3}' "$TASKS_FILE" 2>/dev/null || echo "0")
+if [ "$TASK_COUNT" -lt 1 ]; then
+    echo "FAIL: tasks.md has no valid tasks"
+    echo "Expected format: - [ ] T001: Task description"
+    head -30 "$TASKS_FILE"
+    exit 1
+fi
+
+# Gate 3: Has phase organization
+if ! grep -qiE "^##.*phase" "$TASKS_FILE"; then
+    echo "FAIL: tasks.md missing phase sections"
+    grep "^##" "$TASKS_FILE" || echo "(no sections found)"
+    exit 1
+fi
+
+echo "PASS: tasks.md validated ($TASK_COUNT tasks found)"
+echo "TASK_COUNT=$TASK_COUNT"
+exit 0
+```
+
+**Step 5.4: Handle validation result**
+
+<decision>
+IF bash exit code is 0:
+  → Extract TASK_COUNT from output
+  → Update state: {"phase": "tasks", "status": "complete", "taskCount": TASK_COUNT}
+  → PROCEED to Phase 6
+
+IF bash exit code is non-zero AND retries < 3:
+  → Increment tasks_retries
+  → GOTO Step 5.2
+
+IF bash exit code is non-zero AND retries >= 3:
+  → HALT workflow with failure
+</decision>
+
+</execution>
 
 ### Phase 6: Analyze Loop
 
