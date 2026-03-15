@@ -78,6 +78,28 @@ specs/NNN-feature/.workflow-state.json
 4. **State persistence** - Resume after `/clear` or interruption
 5. **Audit trail** - Every decision logged, every iteration versioned
 
+## Testing
+
+Run evals from within Claude Code:
+
+```bash
+./scripts/eval.sh              # Run all evals
+./scripts/eval.sh init         # Run specific command
+./scripts/eval.sh --viewer     # View results at localhost:3117
+```
+
+### Latest Benchmark Results
+
+| Eval | With Skill | Without Skill | Time (skill) |
+|------|------------|---------------|--------------|
+| init | 100% | 29% | 55.9s |
+| specify | 100% | 100% | 128.9s |
+| tasks | 100% | 83% | 119.6s |
+
+**Aggregate**: 100% pass rate with skill vs 71% without. Skill runs are 15.6s faster on average.
+
+Results saved to `test/results/benchmark-latest.json`.
+
 ## License
 
 MIT

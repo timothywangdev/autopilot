@@ -4,6 +4,25 @@ Comprehensive test suite for the autopilot plugin using skill-creator evals.
 
 ## Quick Start
 
+### From Claude Code Session (recommended)
+
+```bash
+# Run all evals (uses CLAUDECODE= bypass)
+./scripts/eval.sh
+
+# Run specific command
+./scripts/eval.sh init
+./scripts/eval.sh specify
+./scripts/eval.sh tasks
+
+# View results in browser
+./scripts/eval.sh --viewer
+```
+
+Results are saved to `test/results/benchmark-latest.json`.
+
+### From Terminal (outside Claude Code)
+
 ```bash
 # Install skill-creator plugin (if not installed)
 claude plugin install skill-creator
@@ -12,7 +31,6 @@ claude plugin install skill-creator
 /skill-creator eval autopilot
 
 # Run specific command evals
-/skill-creator eval autopilot:full
 /skill-creator eval autopilot:init
 /skill-creator eval autopilot:specify
 

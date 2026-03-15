@@ -1,0 +1,186 @@
+{
+  "metadata": {
+    "skill_name": "autopilot",
+    "skill_path": "/home/wearaway/.claude/plugins/cache/autopilot-marketplace/autopilot/1.0.0",
+    "executor_model": "claude-opus-4-6",
+    "timestamp": "2026-03-15T00:00:00Z",
+    "evals_run": [1, 2, 3],
+    "runs_per_configuration": 1
+  },
+  "runs": [
+    {
+      "eval_id": 1,
+      "eval_name": "init-creates-directory-structure",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 7,
+        "failed": 0,
+        "total": 7,
+        "time_seconds": 55.9,
+        "tokens": 13898,
+        "tool_calls": 11,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Creates .specify/memory/constitution.md file", "passed": true, "evidence": "File exists at outputs/.specify/memory/constitution.md"},
+        {"text": "Creates .specify/templates/spec-template.md file", "passed": true, "evidence": "File exists"},
+        {"text": "Creates .specify/templates/plan-template.md file", "passed": true, "evidence": "File exists"},
+        {"text": "Creates .specify/templates/tasks-template.md file", "passed": true, "evidence": "File exists"},
+        {"text": "Creates specs/ directory", "passed": true, "evidence": "Directory created per transcript"},
+        {"text": "Output mentions initialized or success", "passed": true, "evidence": "Autopilot initialized successfully."},
+        {"text": "Output mentions next steps or suggests next command", "passed": true, "evidence": "Next steps section with 3 commands listed"}
+      ]
+    },
+    {
+      "eval_id": 1,
+      "eval_name": "init-creates-directory-structure",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.29,
+        "passed": 2,
+        "failed": 5,
+        "total": 7,
+        "time_seconds": 159.0,
+        "tokens": 20341,
+        "tool_calls": 28,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Creates .specify/memory/constitution.md file", "passed": false, "evidence": "Created .autopilot/config.yaml instead"},
+        {"text": "Creates .specify/templates/spec-template.md file", "passed": false, "evidence": "Used specs/templates/ not .specify/templates/"},
+        {"text": "Creates .specify/templates/plan-template.md file", "passed": false, "evidence": "No plan-template.md created"},
+        {"text": "Creates .specify/templates/tasks-template.md file", "passed": false, "evidence": "No tasks-template.md created"},
+        {"text": "Creates specs/ directory", "passed": true, "evidence": "specs/ directory exists"},
+        {"text": "Output mentions initialized or success", "passed": true, "evidence": "Transcript describes initialization"},
+        {"text": "Output mentions next steps or suggests next command", "passed": false, "evidence": "No explicit next steps section"}
+      ]
+    },
+    {
+      "eval_id": 2,
+      "eval_name": "specify-creates-spec-from-description",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 8,
+        "failed": 0,
+        "total": 8,
+        "time_seconds": 128.9,
+        "tokens": 22514,
+        "tool_calls": 13,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Creates a spec.md file", "passed": true, "evidence": "specs/1-user-profile/spec.md created"},
+        {"text": "Spec mentions user profile requirements", "passed": true, "evidence": "FR-001 through FR-012"},
+        {"text": "Spec mentions avatar upload functionality", "passed": true, "evidence": "User Story 2 + FR-003"},
+        {"text": "Spec mentions bio editing", "passed": true, "evidence": "User Story 1 + FR-002"},
+        {"text": "Spec has Acceptance/Success Criteria section", "passed": true, "evidence": "Both present"},
+        {"text": "Spec has a Requirements section", "passed": true, "evidence": "12 functional requirements"},
+        {"text": "Spec avoids implementation details", "passed": true, "evidence": "Technology-agnostic throughout"},
+        {"text": "At most 3 NEEDS CLARIFICATION markers", "passed": true, "evidence": "Zero markers, defaults documented in Assumptions"}
+      ]
+    },
+    {
+      "eval_id": 2,
+      "eval_name": "specify-creates-spec-from-description",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 8,
+        "failed": 0,
+        "total": 8,
+        "time_seconds": 78.6,
+        "tokens": 13155,
+        "tool_calls": 5,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Creates a spec.md file", "passed": true, "evidence": "spec.md at project root"},
+        {"text": "Spec mentions user profile requirements", "passed": true, "evidence": "Requirements section with R-GEN, R-AV, R-BIO, R-SOC"},
+        {"text": "Spec mentions avatar upload functionality", "passed": true, "evidence": "Section 3.1 Avatar Upload"},
+        {"text": "Spec mentions bio editing", "passed": true, "evidence": "Section 3.2 Bio Editing"},
+        {"text": "Spec has Acceptance/Success Criteria section", "passed": true, "evidence": "Sections 4 and 5"},
+        {"text": "Spec has a Requirements section", "passed": true, "evidence": "Section 3"},
+        {"text": "Spec avoids implementation details", "passed": true, "evidence": "Generic references only"},
+        {"text": "At most 3 NEEDS CLARIFICATION markers", "passed": true, "evidence": "Zero markers, Open Questions section instead"}
+      ]
+    },
+    {
+      "eval_id": 3,
+      "eval_name": "tasks-generates-ordered-task-list",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "time_seconds": 119.6,
+        "tokens": 29304,
+        "tool_calls": 17,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Creates a tasks.md file", "passed": true, "evidence": "tasks.md with 211 lines"},
+        {"text": "Tasks use checkbox format (- [ ])", "passed": true, "evidence": "All 35 tasks use - [ ] format"},
+        {"text": "Tasks have sequential IDs (T001, T002, etc.)", "passed": true, "evidence": "T001 through T035"},
+        {"text": "Tasks are organized by phases", "passed": true, "evidence": "6 phases"},
+        {"text": "Tasks include file paths", "passed": true, "evidence": "All tasks have file paths"},
+        {"text": "Output includes task count summary", "passed": true, "evidence": "Total tasks: 35, per-phase breakdown"}
+      ]
+    },
+    {
+      "eval_id": 3,
+      "eval_name": "tasks-generates-ordered-task-list",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.83,
+        "passed": 5,
+        "failed": 1,
+        "total": 6,
+        "time_seconds": 113.6,
+        "tokens": 16575,
+        "tool_calls": 6,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Creates a tasks.md file", "passed": true, "evidence": "tasks.md with 414 lines"},
+        {"text": "Tasks use checkbox format (- [ ])", "passed": true, "evidence": "All tasks have checkboxes"},
+        {"text": "Tasks have sequential IDs (T001, T002, etc.)", "passed": false, "evidence": "Uses TASK-X.Y format instead"},
+        {"text": "Tasks are organized by phases", "passed": true, "evidence": "3 phases"},
+        {"text": "Tasks include file paths", "passed": true, "evidence": "Files section per task"},
+        {"text": "Output includes task count summary", "passed": true, "evidence": "Summary table: Total 18"}
+      ]
+    }
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {"mean": 1.0, "stddev": 0.0, "min": 1.0, "max": 1.0},
+      "time_seconds": {"mean": 101.5, "stddev": 38.8, "min": 55.9, "max": 128.9},
+      "tokens": {"mean": 21905, "stddev": 7736, "min": 13898, "max": 29304}
+    },
+    "without_skill": {
+      "pass_rate": {"mean": 0.71, "stddev": 0.38, "min": 0.29, "max": 1.0},
+      "time_seconds": {"mean": 117.1, "stddev": 40.3, "min": 78.6, "max": 159.0},
+      "tokens": {"mean": 16690, "stddev": 3593, "min": 13155, "max": 20341}
+    },
+    "delta": {
+      "pass_rate": "+0.29",
+      "time_seconds": "-15.6",
+      "tokens": "+5215"
+    }
+  },
+  "notes": [
+    "Init eval shows the biggest skill advantage: 100% vs 29% pass rate — baseline can't match the specific .specify/ directory structure",
+    "Specify eval shows 100% pass for both — the current assertions don't discriminate between skill and baseline. Consider adding assertions for skill-specific features like validation checklists, user story prioritization (P1/P2/P3), or branch creation",
+    "Tasks eval shows 100% vs 83% — the T001 sequential ID format is skill-specific; baseline uses TASK-X.Y. The skill also produces [P] parallel markers and [US] story labels that no assertion currently checks",
+    "With-skill runs use more tokens (+5215 avg) but are faster (-15.6s avg), likely because they follow structured instructions rather than inventing an approach",
+    "The baseline specify output is actually quite strong — adding more discriminating assertions would better measure the skill's unique value"
+  ]
+}
