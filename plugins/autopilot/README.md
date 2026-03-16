@@ -1,9 +1,9 @@
 # Autopilot
 
-Fully autonomous feature implementation for Claude Code.
+Fully autonomous feature implementation for Claude Code. Built on [spec-kit](https://github.com/github/spec-kit).
 
 ```
-Plan → Specify → Tasks → Analyze → Implement → Review → Ship
+Plan → Spike → Specify → Plan → Tasks → Analyze → Implement → Verify → Review → Ship
 ```
 
 ## Installation
@@ -12,93 +12,135 @@ Plan → Specify → Tasks → Analyze → Implement → Review → Ship
 claude plugin install github:timothywangdev/autopilot
 ```
 
+## Quick Start
+
+```bash
+# 1. Initialize autopilot in your project
+/autopilot:init
+
+# 2. Edit CLAUDE.md to define your project principles
+
+# 3. Create a plan file describing your feature, then run:
+/autopilot:loop my-feature-plan.md
+```
+
+That's it. Autopilot handles everything else autonomously.
+
 ## Commands
 
 | Command | Description |
 | ------- | ----------- |
-| `/autopilot.full <plan-file>` | End-to-end orchestrator (runs everything) |
-| `/autopilot.specify` | Generate spec.md from feature description |
-| `/autopilot.plan` | Generate plan.md, research.md, data-model.md |
-| `/autopilot.tasks` | Generate tasks.md from plan |
-| `/autopilot.analyze` | Cross-artifact consistency check |
-| `/autopilot.clarify` | Ask clarifying questions, update spec |
-| `/autopilot.implement` | Execute tasks with team spawning |
-| `/autopilot.checklist` | Generate validation checklists |
+| `/autopilot:loop <plan-file>` | **Main entry point** - autonomous feature implementation |
+| `/autopilot:init` | Initialize autopilot in current project |
 
-## Usage
+## How It Works
 
-### Full Automation
+Autopilot uses a **supervisor/worker pattern**:
 
-```bash
-# Create a plan file first (e.g., in plan mode or manually)
-# Then run:
-/autopilot.full my-feature-plan.md
+```
+┌─────────────────────────────────────────────────────┐
+│  /loop (interval timer)                             │
+│  ┌───────────────────────────────────────────────┐  │
+│  │  /autopilot:_supervisor                       │  │
+│  │                                               │  │
+│  │  1. Read .workflow-state.json                 │  │
+│  │  2. If completed → exit (AUTOPILOT_COMPLETE)  │  │
+│  │  3. Spawn worker agent for current phase      │  │
+│  │  4. Update state, increment phase             │  │
+│  │  5. Exit (AUTOPILOT_CONTINUE)                 │  │
+│  │                                               │  │
+│  │  ┌─────────────┐  ┌─────────────┐             │  │
+│  │  │ Worker Agent│  │ Worker Agent│  ...        │  │
+│  │  │ (specify)   │  │ (implement) │             │  │
+│  │  └─────────────┘  └─────────────┘             │  │
+│  └───────────────────────────────────────────────┘  │
+│                         ↓                           │
+│  Loop waits for interval, then invokes again...     │
+└─────────────────────────────────────────────────────┘
 ```
 
-Autopilot will:
-1. Create spec from plan
-2. Generate technical plan and artifacts
-3. Break into tasks
-4. Analyze for consistency (loop until clean)
-5. Implement with parallel team spawning
-6. Code review with 5 specialized reviewers
-7. Auto-fix issues and re-review
-8. Commit and push
+The supervisor spawns worker agents for each phase (specify, plan, tasks, implement, etc.).
 
-### Resume
+## Phases
 
-```bash
-/autopilot.full --resume
-```
+| Phase | Name | Description |
+|-------|------|-------------|
+| 1 | Initialize | Pre-flight + create feature directory |
+| 2 | Spike | Validate risky assumptions |
+| 3 | Specify | Generate spec.md |
+| 4 | Plan | Generate plan.md |
+| 5 | Tasks | Generate tasks.md |
+| 6 | Analyze | Cross-artifact consistency |
+| 7 | Implement | Execute tasks (loops here) |
+| 8 | Verify | Run tests and build |
+| 9 | Review | Self-review code |
+| 10 | Complete | Final validation |
 
-Continues from `.workflow-state.json` after interruption.
-
-## Configuration
+## State Persistence
 
 State is persisted in:
 ```
 specs/NNN-feature/.workflow-state.json
 ```
 
-### Iteration Limits
+Resume after interruption:
+```bash
+/autopilot:loop --resume
+```
 
-| Loop | Default |
-| ---- | ------- |
-| analyze | 5 |
-| clarify | 3 |
-| implementTaskRetry | 3 |
-| review | 5 |
-| workflow | 3 |
+## Project Structure
+
+After `/autopilot:init`:
+```
+CLAUDE.md                    # Constitution (principles, static)
+.specify/
+├── context.md               # Active context (tech stack, auto-updated)
+├── memory/
+│   └── constitution.md      # Symlink → ../../CLAUDE.md (spec-kit compat)
+└── templates/               # Spec-kit templates
+
+specs/
+└── NNN-feature-name/        # Feature directories
+    ├── .workflow-state.json
+    ├── original-plan.md
+    ├── spec.md
+    ├── plan.md
+    └── tasks.md
+```
+
+**Key insight:** CLAUDE.md is your constitution (static principles). `.specify/context.md` is auto-updated with tech stack from each feature's plan.md.
 
 ## Design Principles
 
-1. **Full automation** - No blocking prompts, HALT only on unrecoverable errors
-2. **Team parallelism** - Spawn multiple agents in single message for speed
-3. **Bounded iteration** - Hard limits prevent runaway loops
-4. **State persistence** - Resume after `/clear` or interruption
-5. **Audit trail** - Every decision logged, every iteration versioned
+1. **Single command** - Just `/autopilot:loop` to start
+2. **Loop pattern** - Execute one phase per invocation, persist, exit
+3. **State is truth** - Always resume from state file
+4. **Bounded iteration** - Hard limits prevent runaway loops
+5. **Clean separation** - Bash logic in scripts, prompts in markdown
 
-## Testing
+## Architecture
 
-Run evals from within Claude Code:
-
-```bash
-./scripts/eval.sh              # Run all evals
-./scripts/eval.sh init         # Run specific command
-./scripts/eval.sh --viewer     # View results at localhost:3117
+```
+autopilot/
+├── commands/loop.md           # Public entry point
+├── lib/
+│   ├── _supervisor.md         # Supervisor (spawns workers)
+│   └── _init.md               # Initialize project
+├── scripts/bash/              # All bash logic here
+│   ├── entry-point.sh
+│   ├── parse-loop-args.sh
+│   ├── init-project.sh
+│   └── ...
+└── vendor/spec-kit/           # Git submodule
+    └── templates/             # Spec-kit templates
 ```
 
-### Latest Benchmark Results
+## Updating Spec-kit
 
-| Eval | With Skill | Without Skill | Time (skill) |
-|------|------------|---------------|--------------|
-| init | 100% | 29% | 55.9s |
-| specify | 100% | 100% | 128.9s |
-| tasks | 100% | 83% | 119.6s |
-
-**Aggregate**: 100% pass rate with skill vs 71% without. Skill runs are 15.6s faster on average.
-
-Results saved to `test/results/benchmark-latest.json`.
+```bash
+cd plugins/autopilot
+git submodule update --remote vendor/spec-kit
+```
 
 ## License
 

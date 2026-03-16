@@ -1,0 +1,6 @@
+[submodule "vendor/spec-kit"]
+	path = vendor/spec-kit
+	url = https://github.com/github/spec-kit
+[submodule "plugins/autopilot/vendor/spec-kit"]
+	path = plugins/autopilot/vendor/spec-kit
+	url = https://github.com/github/spec-kit.git

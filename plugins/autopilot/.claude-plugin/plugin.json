@@ -1,7 +1,7 @@
 {
   "name": "autopilot",
   "version": "1.0.0",
-  "description": "Fully autonomous feature implementation: plan -> spec -> tasks -> implement -> review -> ship",
+  "description": "Fully autonomous feature implementation via /autopilot:loop",
   "author": {
     "name": "timothywangdev"
   },
@@ -10,9 +10,11 @@
   "keywords": [
     "automation",
     "implementation",
-    "workflow",
-    "specification",
-    "code-review",
-    "team-spawn"
+    "workflow"
+  ],
+  "commands": [
+    "./commands/loop.md",
+    "./lib/_supervisor.md",
+    "./lib/_init.md"
   ]
 }
