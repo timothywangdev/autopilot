@@ -975,6 +975,7 @@ Based on `CURRENT_PHASE` from entry point, execute the appropriate phase:
 3. **Use entry-point output** — Don't re-discover STATE_FILE or FEATURE_DIR
 4. **Exit cleanly** — Output appropriate signal and exit 0 or 1
 5. **Loop handles continuation** — Don't try to run multiple phases
+6. **Max 8 parallel agents** — Never spawn more than 8 concurrent Agent() calls. Batch and wait if more are needed.
 
 ## Using with /loop
 

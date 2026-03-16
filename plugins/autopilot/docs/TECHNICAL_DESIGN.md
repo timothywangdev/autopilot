@@ -375,6 +375,7 @@ All workflow state is persisted in `.workflow-state.json`:
 
 **Safety Limits**:
 - Maximum 100 implement iterations (prevents infinite loops)
+- Maximum 8 parallel agents (batch larger workloads)
 - Per-task retry limit of 3
 
 **Execution** (per iteration):
@@ -676,6 +677,17 @@ if [ "$IMPLEMENT_COUNT" -ge "$MAX_IMPLEMENT_ITERATIONS" ]; then
     exit 1
 fi
 ```
+
+### Resource Limits Summary
+
+| Limit | Value | Description |
+|-------|-------|-------------|
+| Max parallel agents | 8 | Never spawn more than 8 concurrent Agent() calls |
+| Max implement iterations | 100 | Total implement phase invocations before HALT |
+| Max verify retries | 3 | Test failures before HALT |
+| Max feature number | 9999 | Feature directory limit (001-9999) |
+
+**Parallel Agent Rule**: When spawning agents for parallel work (e.g., implementing independent tasks), batch them in groups of at most 8. Wait for the batch to complete before spawning the next batch.
 
 ### State Recovery
 

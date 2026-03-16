@@ -223,6 +223,17 @@ Autopilot uses CLAUDE.md as the constitution (not `.specify/memory/constitution.
 | `AUTOPILOT_HALTED` | Unrecoverable error | Stop loop |
 | `AUTOPILOT_CONTINUE` | Phase done, more work | Continue loop |
 
+## Resource Limits
+
+| Limit | Value | Description |
+|-------|-------|-------------|
+| Max parallel agents | 8 | Never spawn more than 8 concurrent Agent() calls |
+| Max implement iterations | 100 | Safety limit to prevent infinite loops |
+| Max verify retries | 3 | Retries before halting on test failures |
+| Max feature number | 9999 | Feature directory limit (001-9999) |
+
+**Parallel Agent Rule**: When spawning agents for parallel work (e.g., implementing independent tasks), batch them in groups of at most 8. Wait for the batch to complete before spawning the next batch.
+
 ## Contributing
 
 1. Keep markdown files as pure prompts (instructions for Claude)
